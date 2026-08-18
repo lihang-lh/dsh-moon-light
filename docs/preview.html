@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-mood-light · 跑马灯氛围灯预览</title>
+<style>
+  /* ===== 与插件一致的跑马灯光环实现 ===== */
+  .dsh-mood-light {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    pointer-events: none;
+    box-sizing: border-box;
+    padding: var(--ml-width);
+    background: var(--ml-gradient);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    opacity: var(--ml-opacity);
+    animation: dsh-mood-light-flash var(--ml-flash) ease-in-out infinite;
+    will-change: opacity;
+  }
+  .dsh-mood-light[data-flash="off"] { animation: none; }
+  @keyframes dsh-mood-light-flash {
+    0%, 100% { opacity: var(--ml-opacity); }
+    50% { opacity: calc(var(--ml-opacity) * 0.18); }
+  }
+  .dsh-mood-light-disc {
+    position: absolute;
+    inset: -50%;
+    background: var(--ml-gradient);
+    animation: dsh-mood-light-spin var(--ml-rotate) linear infinite;
+    will-change: transform;
+  }
+  @keyframes dsh-mood-light-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .dsh-mood-light, .dsh-mood-light-disc { animation: none; }
+  }
+
+  /* ===== 预览页样式 ===== */
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #10141a;
+    color: #e6e9ef;
+  }
+  .stage { text-align: center; max-width: 480px; padding: 24px; }
+  .stage h1 { font-size: 20px; margin: 0 0 6px; }
+  .stage p { font-size: 13px; color: #9aa3b2; line-height: 1.7; margin: 0 0 18px; }
+  .stage code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+
+  .panel {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    width: 260px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: rgba(24, 29, 38, 0.92);
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .panel h2 { font-size: 14px; margin: 0; }
+  .field { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .field label { color: #9aa3b2; white-space: nowrap; }
+  .field input[type="range"] { width: 110px; accent-color: #34d399; }
+  .field input[type="color"] {
+    width: 30px; height: 22px; padding: 0; border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 5px; background: transparent; cursor: pointer;
+  }
+  .field select {
+    padding: 3px 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2);
+    background: #1c2330; color: #e6e9ef; font-size: 12px;
+  }
+  .states { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); }
+  .state-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .state-row .name { width: 44px; color: #9aa3b2; }
+  .state-row .swatch { width: 60px; height: 10px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.15); }
+  .mode-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mode-btns button {
+    flex: 1;
+    padding: 6px 0;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: #1c2330;
+    color: #e6e9ef;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .mode-btns button.active { border-color: #34d399; background: rgba(52,211,153,0.18); }
+</style>
+</head>
+<body>
+<div id="ring" class="dsh-mood-light" aria-hidden="true"></div>
+
+<aside class="panel">
+  <h2>跑马灯预览 · 参数调节</h2>
+  <div class="field">
+    <label>会话状态</label>
+    <div class="mode-btns" id="modeBtns">
+      <button data-mode="running">运行中</button>
+      <button data-mode="success">完成</button>
+      <button data-mode="warning">待处理</button>
+      <button data-mode="off">关闭</button>
+    </div>
+  </div>
+  <div class="field">
+    <label>光圈宽度 <span id="vWidth"></span>px</label>
+    <input type="range" id="width" min="1" max="40" step="1" value="8">
+  </div>
+  <div class="field">
+    <label>不透明度 <span id="vOpacity"></span>%</label>
+    <input type="range" id="opacity" min="5" max="100" step="5" value="60">
+  </div>
+  <div class="field">
+    <label>效果样式</label>
+    <select id="style">
+      <option value="segments" selected>分段跑马灯（经典）</option>
+      <option value="smooth">平滑跑马灯（柔和）</option>
+      <option value="linear">线性渐变（静止）</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>转速 <span id="vRotate"></span> 秒/圈</label>
+    <input type="range" id="rotate" min="0" max="60" step="1" value="16">
+  </div>
+  <div class="field">
+    <label>闪动 <span id="vFlash"></span> 秒/周期</label>
+    <input type="range" id="flash" min="0" max="10" step="0.2" value="1.2">
+  </div>
+  <div class="states">
+    <div class="state-row"><span class="name">运行中</span><span class="swatch" id="swRunning"></span>
+      <input type="color" data-state="running" data-index="0" value="#10b981">
+      <input type="color" data-state="running" data-index="1" value="#34d399">
+      <input type="color" data-state="running" data-index="2" value="#6ee7b7">
+    </div>
+    <div class="state-row"><span class="name">完成</span><span class="swatch" id="swSuccess"></span>
+      <input type="color" data-state="success" data-index="0" value="#ec4899">
+      <input type="color" data-state="success" data-index="1" value="#f472b6">
+      <input type="color" data-state="success" data-index="2" value="#f9a8d4">
+    </div>
+    <div class="state-row"><span class="name">待处理</span><span class="swatch" id="swWarning"></span>
+      <input type="color" data-state="warning" data-index="0" value="#f59e0b">
+      <input type="color" data-state="warning" data-index="1" value="#fbbf24">
+      <input type="color" data-state="warning" data-index="2" value="#fde68a">
+    </div>
+  </div>
+</aside>
+
+<div class="stage">
+  <h1>dsh-mood-light · 跑马灯氛围灯</h1>
+  <p>
+    在 DSH Web 界面边缘渲染一圈跑马灯渐变光环，随会话状态自动变色
+    （运行中绿色流动 / 完成粉色 / 有待处理黄色警告）。本页为独立预览：
+    无需安装插件，右侧面板即可调参。<br>
+    安装：<code>dsh plugin --profile web add "github:lihang-lh/dsh-moon-light"</code>
+  </p>
+</div>
+
+<script>
+(function () {
+  var MODES = ['running', 'success', 'warning'];
+  var colors = {
+    running: ['#10b981', '#34d399', '#6ee7b7'],
+    success: ['#ec4899', '#f472b6', '#f9a8d4'],
+    warning: ['#f59e0b', '#fbbf24', '#fde68a']
+  };
+  var mode = 'running';
+  var state = {
+    width: 8,
+    opacity: 0.6,
+    style: 'segments',
+    rotate: 16,
+    flash: 1.2
+  };
+
+  var ring = document.getElementById('ring');
+  var swatches = {
+    running: document.getElementById('swRunning'),
+    success: document.getElementById('swSuccess'),
+    warning: document.getElementById('swWarning')
+  };
+
+  function conicGradient(colorsArr, segments) {
+    if (segments) {
+      var n = colorsArr.length, slice = 360 / n, stops = [];
+      for (var i = 0; i < n; i++) {
+        stops.push(colorsArr[i] + ' ' + Math.round(i * slice) + 'deg ' + Math.round((i + 1) * slice) + 'deg');
+      }
+      return 'conic-gradient(from 0deg, ' + stops.join(', ') + ')';
+    }
+    return 'conic-gradient(from 0deg, ' + colorsArr.join(', ') + ')';
+  }
+
+  function render() {
+    if (mode === 'off') { ring.style.display = 'none'; return; }
+    ring.style.display = '';
+    var conic = state.style !== 'linear';
+    var gradient = state.style === 'linear'
+      ? 'linear-gradient(135deg, ' + colors[mode].join(', ') + ')'
+      : conicGradient(colors[mode], state.style === 'segments');
+    ring.style.setProperty('--ml-gradient', gradient);
+    ring.style.setProperty('--ml-width', state.width + 'px');
+    ring.style.setProperty('--ml-opacity', String(state.opacity));
+    ring.style.setProperty('--ml-flash', (state.flash > 0 ? state.flash : 0) + 's');
+    ring.style.setProperty('--ml-rotate', (conic && state.rotate > 0 ? state.rotate : 0) + 's');
+    ring.dataset.flash = state.flash > 0 ? 'on' : 'off';
+    ring.innerHTML = conic && state.rotate > 0
+      ? '<div class="dsh-mood-light-disc"></div>'
+      : '';
+    document.getElementById('vWidth').textContent = state.width;
+    document.getElementById('vOpacity').textContent = Math.round(state.opacity * 100);
+    document.getElementById('vRotate').textContent = state.rotate;
+    document.getElementById('vFlash').textContent = state.flash.toFixed(1);
+    for (var i = 0; i < MODES.length; i++) {
+      swatches[MODES[i]].style.background = 'linear-gradient(90deg, ' + colors[MODES[i]].join(', ') + ')';
+    }
+  }
+
+  // 状态按钮
+  var btns = document.querySelectorAll('.mode-btns button');
+  btns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      mode = btn.dataset.mode;
+      btns.forEach(function (b) { b.classList.toggle('active', b === btn); });
+      render();
+    });
+  });
+  btns[0].classList.add('active');
+
+  // 滑块
+  document.getElementById('width').addEventListener('input', function (e) { state.width = +e.target.value; render(); });
+  document.getElementById('opacity').addEventListener('input', function (e) { state.opacity = +e.target.value / 100; render(); });
+  document.getElementById('rotate').addEventListener('input', function (e) { state.rotate = +e.target.value; render(); });
+  document.getElementById('flash').addEventListener('input', function (e) { state.flash = +e.target.value; render(); });
+  document.getElementById('style').addEventListener('change', function (e) { state.style = e.target.value; render(); });
+
+  // 取色器
+  document.querySelectorAll('input[type="color"]').forEach(function (input) {
+    input.addEventListener('input', function () {
+      colors[input.dataset.state][+input.dataset.index] = input.value;
+      render();
+    });
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
