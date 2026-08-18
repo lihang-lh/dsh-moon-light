@@ -1,0 +1,40 @@
+# dsh bundle patch: inserts this plugin into a profile's layer stack.
+#
+# 这里是部署级默认配置；用户通过设置面板（设置 -> 氛围灯）做的调整会保存到
+# localStorage 并优先于本文件生效。也可以在用户 profile 的 cordis.patch.yml
+# 里对同一行 id 覆盖（优先级：localStorage > 本文件 > 内置默认）。
+#
+# 状态映射（自动切换，无需配置）：
+#   running（运行中）     -> 绿色跑马灯光带 + 闪动
+#   success（完成/空闲）  -> 粉色光带（稳态）
+#   warning（有待处理）   -> 黄色光带（慢速脉冲）
+- insert:
+    - id: mood-light
+      name: 'dsh-mood-light'
+      config:
+        enabled: true
+        # 光圈厚度（px）
+        width: 8
+        # 最大不透明度 0..1
+        opacity: 0.6
+        # 渐变类型：'conic' 跑马灯旋转光带 | 'linear' 线性渐变（静止）
+        gradientType: 'conic'
+        # 光带样式（仅 conic）：true 分段跑马灯（经典） | false 平滑渐变（柔和）
+        segments: true
+        # 跑马灯旋转一圈的秒数（0 = 静止）
+        rotate: 16
+        # 各状态未单独指定 flash 时的默认闪动秒数（0 = 稳态）
+        flash: 1.2
+        states:
+          # 运行中：绿色（flash 为一个完整明暗周期的秒数）
+          running:
+            colors: ['#10b981', '#34d399', '#6ee7b7']
+            flash: 1.2
+          # 完成 / 空闲：粉色稳态（flash: 0 = 不闪）
+          success:
+            colors: ['#ec4899', '#f472b6', '#f9a8d4']
+            flash: 0
+          # 有待处理（审批 / 计划确认 / 提问）：黄色慢速脉冲
+          warning:
+            colors: ['#f59e0b', '#fbbf24', '#fde68a']
+            flash: 1.6
