@@ -1,5 +1,7 @@
 # dsh-mood-light — 会话氛围灯（跑马灯）
 
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+
 给 DSH Web 界面加一圈「跑马灯」氛围光：根据当前会话的运行状态，在屏幕最外层
 自动显示不同颜色、不同转速/闪动节奏的渐变光带。
 

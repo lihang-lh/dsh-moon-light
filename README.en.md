@@ -1,5 +1,7 @@
 # dsh-mood-light — Session Mood Light (Marquee)
 
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+
 A marquee-style mood-light ring around the DSH web UI edge. It reads the
 current session state and automatically switches the light color and rhythm:
 
