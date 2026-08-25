@@ -5,9 +5,9 @@
 # 里对同一行 id 覆盖（优先级：localStorage > 本文件 > 内置默认）。
 #
 # 状态映射（自动切换，无需配置）：
-#   running（运行中）     -> 绿色跑马灯光带 + 闪动
-#   success（完成/空闲）  -> 粉色光带（稳态）
-#   warning（有待处理）   -> 黄色光带（慢速脉冲）
+#   running（运行中）     -> 绿色柔光晕（内散射）+ 呼吸闪动
+#   success（完成/空闲）  -> 粉色柔光晕（稳态）
+#   warning（有待处理）   -> 黄色柔光晕（慢速脉冲）
 - insert:
     - id: mood-light
       name: 'dsh-mood-light'
@@ -17,8 +17,13 @@
         width: 8
         # 最大不透明度 0..1
         opacity: 0.6
-        # 渐变类型：'conic' 跑马灯旋转光带 | 'linear' 线性渐变（静止）
-        gradientType: 'conic'
+        # 渐变类型：'glow' 柔光晕（散光，默认、无边框内散射）| 'conic' 跑马灯旋转光带 | 'linear' 线性渐变（静止）
+        # glow 专用参数（仅 gradientType='glow' 时生效）：glowSpread 扩散范围 0..200，glowWobble 不规则强度 0..10
+        gradientType: 'glow'
+        # 柔光晕散射范围（0..200，仅 glow）
+        glowSpread: 24
+        # 柔光晕不规则强度（0..10，仅 glow；0 = 不应用位移滤镜）
+        glowWobble: 1
         # 光带样式（仅 conic）：true 分段跑马灯（经典） | false 平滑渐变（柔和）
         segments: true
         # 跑马灯旋转一圈的秒数（0 = 静止）

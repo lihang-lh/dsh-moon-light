@@ -1,9 +1,12 @@
-# dsh-mood-light — Session Mood Light (Marquee)
+# dsh-mood-light — Session Mood Light
 
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
-A marquee-style mood-light ring around the DSH web UI edge. It reads the
-current session state and automatically switches the light color and rhythm:
+A mood-light ring around the DSH web UI edge. It reads the current session
+state and automatically switches the light color and rhythm. The **default
+effect is soft glow (diffuse)** — borderless, a multi-layer inward-diffusing
+scattered light with a subtle organic irregularity. Marquee (rotating band)
+and linear gradient (static) remain selectable styles.
 
 | Session state | Light | Signal (host-published session summary) |
 | --- | --- | --- |
@@ -24,9 +27,11 @@ A "氛围灯" (Mood Light) page is registered in the DSH settings panel
 - **Enabled** toggle
 - **Ring width**: 1–40 px slider
 - **Opacity**: 5%–100% slider
-- **Style**: `marquee (rotating band)` / `linear gradient (static)`
+- **Style**: `soft glow (diffuse, default)` / `marquee (rotating band)` / `linear gradient (static)`
 - **Band style** (marquee only): `segmented marquee (classic)` / `smooth gradient`
 - **Rotation speed**: 0–60 s per revolution (0 = static)
+- **Glow spread** (glow only): 0–200 px, how far the halo diffuses inward
+- **Wobble** (glow only): 0–10, subtle organic distortion of the halo edge (0 = off)
 - **Flash**: 0–10 s per cycle (0 = steady; per-state override available)
 - **State colors**: three color pickers each for running / done / pending
 - **Reset to defaults**
@@ -69,7 +74,9 @@ Override deployment defaults via a profile patch without touching the plugin:
   config:
     width: 12
     rotate: 24
-    gradientType: 'linear'
+    gradientType: 'glow'     # default soft glow; 'conic' | 'linear' | 'glow'
+    glowSpread: 40           # glow halo spread (px)
+    glowWobble: 2.5          # glow irregularity (0..10)
     states:
       running:
         colors: ['#22c55e', '#4ade80', '#bbf7d0']
@@ -93,6 +100,18 @@ Override deployment defaults via a profile patch without touching the plugin:
   the mask (`rotate` controls the marquee speed; segmented mode uses hard
   color stops, smooth mode uses a continuous gradient; `flash` pulses the
   overall brightness).
+- The soft-glow (glow) style is a full-screen `position: fixed; inset: 0`
+  layer (no background, no mask) whose shadow is built in JS from the state
+  primary/secondary colors + `width` + `glowSpread` as a chain of **multi-layer
+  blurred inset box-shadows** (no zero-blur solid core layer — spread grows
+  from `width` to `width+glowSpread` while alpha falls, so light fades in
+  smoothly from the screen edge with no crisp border) injected into
+  `--ml-glow-shadow`; a hidden `<svg>` adds an `feTurbulence` +
+  `feDisplacementMap` filter whose `scale` is `glowWobble` (0 disables the
+  filter), making the halo edge slightly organic/irregular.
+- The default effect style is **soft glow (diffuse)** — soft and borderless
+  out of the box; `conic`/`linear` can still be selected in the settings page
+  or via row config.
 
 ## Development
 

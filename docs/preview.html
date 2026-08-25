@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>dsh-mood-light · 跑马灯氛围灯预览</title>
+<title>dsh-mood-light · 氛围灯预览（跑马灯 / 线性 / 柔光晕）</title>
 <style>
   /* ===== 与插件一致的跑马灯光环实现 ===== */
   .dsh-mood-light {
@@ -25,7 +25,7 @@
   .dsh-mood-light[data-flash="off"] { animation: none; }
   @keyframes dsh-mood-light-flash {
     0%, 100% { opacity: var(--ml-opacity); }
-    50% { opacity: calc(var(--ml-opacity) * 0.18); }
+    50% { opacity: calc(var(--ml-opacity) * 0.35); }
   }
   .dsh-mood-light-disc {
     position: absolute;
@@ -35,6 +35,20 @@
     will-change: transform;
   }
   @keyframes dsh-mood-light-spin { to { transform: rotate(360deg); } }
+  /* 柔光晕（散光）：覆盖主样式，改用多层 inset box-shadow + SVG 位移滤镜 */
+  .dsh-mood-light.dsh-mood-light-glow {
+    background: none;
+    padding: 0;
+    -webkit-mask: none;
+    mask: none;
+    box-shadow: var(--ml-glow-shadow);
+  }
+  .dsh-mood-light-turb {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+  }
   @media (prefers-reduced-motion: reduce) {
     .dsh-mood-light, .dsh-mood-light-disc { animation: none; }
   }
@@ -106,8 +120,18 @@
 <body>
 <div id="ring" class="dsh-mood-light" aria-hidden="true"></div>
 
+<!-- 隐蔽 SVG：承载 feTurbulence + feDisplacementMap，让柔光晕边缘轻微不规则 -->
+<svg id="turbWrap" class="dsh-mood-light-turb" aria-hidden="true">
+  <defs>
+    <filter id="dsh-mood-light-turb">
+      <feTurbulence type="fractalNoise" baseFrequency="0.011" numOctaves="2" result="noise" seed="2"></feTurbulence>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
+    </filter>
+  </defs>
+</svg>
+
 <aside class="panel">
-  <h2>跑马灯预览 · 参数调节</h2>
+  <h2>氛围灯预览 · 参数调节</h2>
   <div class="field">
     <label>会话状态</label>
     <div class="mode-btns" id="modeBtns">
@@ -128,14 +152,23 @@
   <div class="field">
     <label>效果样式</label>
     <select id="style">
-      <option value="segments" selected>分段跑马灯（经典）</option>
+      <option value="glow" selected>柔光晕（散光，默认）</option>
+      <option value="segments">分段跑马灯（经典）</option>
       <option value="smooth">平滑跑马灯（柔和）</option>
       <option value="linear">线性渐变（静止）</option>
     </select>
   </div>
-  <div class="field">
+  <div class="field" id="fieldRotate">
     <label>转速 <span id="vRotate"></span> 秒/圈</label>
     <input type="range" id="rotate" min="0" max="60" step="1" value="16">
+  </div>
+  <div class="field" id="fieldGlowSpread" style="display:none">
+    <label>扩散范围 <span id="vGlowSpread"></span> px</label>
+    <input type="range" id="glowSpread" min="0" max="200" step="1" value="24">
+  </div>
+  <div class="field" id="fieldGlowWobble" style="display:none">
+    <label>不规则强度 <span id="vGlowWobble"></span></label>
+    <input type="range" id="glowWobble" min="0" max="10" step="0.1" value="1">
   </div>
   <div class="field">
     <label>闪动 <span id="vFlash"></span> 秒/周期</label>
@@ -161,11 +194,12 @@
 </aside>
 
 <div class="stage">
-  <h1>dsh-mood-light · 跑马灯氛围灯</h1>
+  <h1>dsh-mood-light · 氛围灯</h1>
   <p>
-    在 DSH Web 界面边缘渲染一圈跑马灯渐变光环，随会话状态自动变色
-    （运行中绿色流动 / 完成粉色 / 有待处理黄色警告）。本页为独立预览：
-    无需安装插件，右侧面板即可调参。<br>
+    在 DSH Web 界面边缘渲染一圈柔和散射光，随会话状态自动变色
+    （运行中绿色呼吸 / 完成粉色 / 有待处理黄色警告）。默认柔光晕（散光）
+    ——无边框、由边缘平滑向内淡出的散射光；跑马灯（旋转光带）与线性渐变仍可选。
+    本页为独立预览：无需安装插件，右侧面板即可调参。<br>
     安装：<code>dsh plugin --profile web add "github:lihang-lh/dsh-moon-light"</code>
   </p>
 </div>
@@ -182,9 +216,11 @@
   var state = {
     width: 8,
     opacity: 0.6,
-    style: 'segments',
+    style: 'glow',
     rotate: 16,
-    flash: 1.2
+    flash: 1.2,
+    glowSpread: 24,
+    glowWobble: 1
   };
 
   var ring = document.getElementById('ring');
@@ -205,26 +241,79 @@
     return 'conic-gradient(from 0deg, ' + colorsArr.join(', ') + ')';
   }
 
+  function hexToRgba(hex, alpha) {
+    var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex));
+    if (!m) return hex;
+    return 'rgba(' + parseInt(m[1], 16) + ', ' + parseInt(m[2], 16) + ', ' + parseInt(m[3], 16) + ', ' + alpha + ')';
+  }
+
+  // 与插件一致的柔光晕 box-shadow：纯多层 blur>0 的内散射软晕（无零模糊实心核心层/无边框），由边缘平滑向内淡出
+  function glowShadowString(colorsArr, width, spread) {
+    var core = (colorsArr && colorsArr[0]) || '#10b981';
+    var haloColor = (colorsArr && colorsArr.length > 1) ? colorsArr[1] : core;
+    var w = Math.max(1, Math.min(60, +width || 8));
+    var s = Math.max(0, Math.min(200, +spread || 24));
+    var max = w + s;
+    var parts = [];
+    var N = 5;
+    for (var i = 0; i < N; i++) {
+      var t = i / (N - 1);
+      var ls = Math.round(w + (max - w) * t);
+      var blur = Math.max(w, Math.round(ls * 0.7));
+      var alpha = Math.max(0.02, 0.6 * (1 - t) + 0.12).toFixed(3);
+      var color = i <= 1 ? core : haloColor;
+      parts.push('inset 0 0 ' + blur + 'px ' + ls + 'px ' + hexToRgba(color, alpha));
+    }
+    return parts.join(', ');
+  }
+
+  var turbMap = document.querySelector('#turbWrap feDisplacementMap');
+
+  function showField(el, show) { el.style.display = show ? '' : 'none'; }
+
   function render() {
     if (mode === 'off') { ring.style.display = 'none'; return; }
     ring.style.display = '';
-    var conic = state.style !== 'linear';
-    var gradient = state.style === 'linear'
-      ? 'linear-gradient(135deg, ' + colors[mode].join(', ') + ')'
-      : conicGradient(colors[mode], state.style === 'segments');
-    ring.style.setProperty('--ml-gradient', gradient);
-    ring.style.setProperty('--ml-width', state.width + 'px');
-    ring.style.setProperty('--ml-opacity', String(state.opacity));
-    ring.style.setProperty('--ml-flash', (state.flash > 0 ? state.flash : 0) + 's');
-    ring.style.setProperty('--ml-rotate', (conic && state.rotate > 0 ? state.rotate : 0) + 's');
-    ring.dataset.flash = state.flash > 0 ? 'on' : 'off';
-    ring.innerHTML = conic && state.rotate > 0
-      ? '<div class="dsh-mood-light-disc"></div>'
-      : '';
+    var glow = state.style === 'glow';
+    var conic = !glow && state.style !== 'linear';
+    ring.className = glow ? 'dsh-mood-light dsh-mood-light-glow' : 'dsh-mood-light';
+
+    if (glow) {
+      ring.style.setProperty('--ml-glow-shadow', glowShadowString(colors[mode], state.width, state.glowSpread));
+      ring.style.setProperty('--ml-width', state.width + 'px');
+      ring.style.setProperty('--ml-opacity', String(state.opacity));
+      ring.style.setProperty('--ml-flash', (state.flash > 0 ? state.flash : 0) + 's');
+      ring.dataset.flash = state.flash > 0 ? 'on' : 'off';
+      if (turbMap) turbMap.setAttribute('scale', state.glowWobble);
+      if (state.glowWobble > 0) ring.style.filter = 'url(#dsh-mood-light-turb)';
+      else ring.style.removeProperty('filter');
+      ring.innerHTML = '';
+    } else {
+      var gradient = state.style === 'linear'
+        ? 'linear-gradient(135deg, ' + colors[mode].join(', ') + ')'
+        : conicGradient(colors[mode], state.style === 'segments');
+      ring.style.setProperty('--ml-gradient', gradient);
+      ring.style.setProperty('--ml-width', state.width + 'px');
+      ring.style.setProperty('--ml-opacity', String(state.opacity));
+      ring.style.setProperty('--ml-flash', (state.flash > 0 ? state.flash : 0) + 's');
+      ring.style.setProperty('--ml-rotate', (conic && state.rotate > 0 ? state.rotate : 0) + 's');
+      ring.dataset.flash = state.flash > 0 ? 'on' : 'off';
+      ring.style.removeProperty('filter');
+      ring.innerHTML = conic && state.rotate > 0
+        ? '<div class="dsh-mood-light-disc"></div>'
+        : '';
+    }
+
+    showField(document.getElementById('fieldRotate'), !glow);
+    showField(document.getElementById('fieldGlowSpread'), glow);
+    showField(document.getElementById('fieldGlowWobble'), glow);
+
     document.getElementById('vWidth').textContent = state.width;
     document.getElementById('vOpacity').textContent = Math.round(state.opacity * 100);
     document.getElementById('vRotate').textContent = state.rotate;
     document.getElementById('vFlash').textContent = state.flash.toFixed(1);
+    document.getElementById('vGlowSpread').textContent = state.glowSpread;
+    document.getElementById('vGlowWobble').textContent = state.glowWobble > 0 ? state.glowWobble.toFixed(1) : '关闭';
     for (var i = 0; i < MODES.length; i++) {
       swatches[MODES[i]].style.background = 'linear-gradient(90deg, ' + colors[MODES[i]].join(', ') + ')';
     }
@@ -246,6 +335,8 @@
   document.getElementById('opacity').addEventListener('input', function (e) { state.opacity = +e.target.value / 100; render(); });
   document.getElementById('rotate').addEventListener('input', function (e) { state.rotate = +e.target.value; render(); });
   document.getElementById('flash').addEventListener('input', function (e) { state.flash = +e.target.value; render(); });
+  document.getElementById('glowSpread').addEventListener('input', function (e) { state.glowSpread = +e.target.value; render(); });
+  document.getElementById('glowWobble').addEventListener('input', function (e) { state.glowWobble = +e.target.value; render(); });
   document.getElementById('style').addEventListener('change', function (e) { state.style = e.target.value; render(); });
 
   // 取色器

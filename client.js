@@ -14,8 +14,9 @@
  * 会话实时下发的状态信号。
  *
  * 定制：设置面板新增「氛围灯」页面（settings.section），可调
- * 启用 / 宽度 / 不透明度 / 效果样式（跑马灯 vs 线性）/ 转速 / 闪动频率 /
- * 三状态的渐变色。配置持久化在 localStorage（第三方命名空间不在宿主
+ * 启用 / 宽度 / 不透明度 / 效果样式（默认柔光晕散光；跑马灯 vs 线性仍可选）/
+ * 转速 / 闪动频率 / 三状态的渐变色；柔光晕另有扩散范围与不规则强度两个参数。
+ * 配置持久化在 localStorage（第三方命名空间不在宿主
  * settings wire 的白名单内，与 dsh-skin 同一模式），同浏览器生效。
  *
  * 手写 bundle 遵循 DSH client-modules 协议：
@@ -34,10 +35,12 @@ window.__ModuleLoader__.load({
       enabled: true,
       width: 8,               // 光圈厚度 px
       opacity: 0.6,           // 最大不透明度 0..1
-      gradientType: "conic",  // 'conic' 跑马灯旋转光带 | 'linear' 线性渐变
+      gradientType: "glow",   // 默认 'glow' 柔光晕（散光，无边框内散射）；可选 'conic' 跑马灯旋转光带 | 'linear' 线性渐变
       segments: true,         // 光带样式：true 分段跑马灯 | false 平滑渐变（仅 conic）
       rotate: 16,             // 跑马灯旋转一圈的秒数（0 = 静止）
       flash: 1.2,             // 未单独指定时各状态的默认闪动秒数（0 = 稳态）
+      glowSpread: 24,         // 柔光晕散射范围 px（0..200，仅 glow）
+      glowWobble: 1,          // 柔光晕不规则强度（0..10，仅 glow；0 = 不应用位移滤镜）
       states: {
         running: { colors: ["#10b981", "#34d399", "#6ee7b7"], flash: 1.2 },
         success: { colors: ["#ec4899", "#f472b6", "#f9a8d4"], flash: 0 },
@@ -74,16 +77,20 @@ window.__ModuleLoader__.load({
         segments: DEFAULT_CONFIG.segments,
         rotate: DEFAULT_CONFIG.rotate,
         flash: DEFAULT_CONFIG.flash,
+        glowSpread: DEFAULT_CONFIG.glowSpread,
+        glowWobble: DEFAULT_CONFIG.glowWobble,
         states: {}
       };
       if (cfg && typeof cfg === "object") {
         if (typeof cfg.enabled === "boolean") merged.enabled = cfg.enabled;
         if (typeof cfg.width === "number") merged.width = cfg.width;
         if (typeof cfg.opacity === "number") merged.opacity = cfg.opacity;
-        if (cfg.gradientType === "conic" || cfg.gradientType === "linear") merged.gradientType = cfg.gradientType;
+        if (cfg.gradientType === "conic" || cfg.gradientType === "linear" || cfg.gradientType === "glow") merged.gradientType = cfg.gradientType;
         if (typeof cfg.segments === "boolean") merged.segments = cfg.segments;
         if (typeof cfg.rotate === "number") merged.rotate = cfg.rotate;
         if (typeof cfg.flash === "number") merged.flash = cfg.flash;
+        if (typeof cfg.glowSpread === "number") merged.glowSpread = clamp(numberOr(cfg.glowSpread, DEFAULT_CONFIG.glowSpread), 0, 200);
+        if (typeof cfg.glowWobble === "number") merged.glowWobble = clamp(numberOr(cfg.glowWobble, DEFAULT_CONFIG.glowWobble), 0, 10);
       }
       for (var i = 0; i < MODES.length; i++) {
         var mode = MODES[i].key;
@@ -186,7 +193,7 @@ window.__ModuleLoader__.load({
         ".dsh-mood-light[data-flash=\"off\"] { animation: none; }",
         "@keyframes dsh-mood-light-flash {",
         "  0%, 100% { opacity: var(--ml-opacity); }",
-        "  50% { opacity: calc(var(--ml-opacity) * 0.18); }",
+        "  50% { opacity: calc(var(--ml-opacity) * 0.35); }",
         "}",
         /* 旋转盘：inset -50% 撑成 2 倍尺寸的方块，绕中心旋转，被 mask 裁成光圈 —— 跑马灯效果。 */
         ".dsh-mood-light-disc {",
@@ -198,8 +205,28 @@ window.__ModuleLoader__.load({
         "}",
         ".dsh-mood-light-disc[data-spin=\"off\"] { animation: none; }",
         "@keyframes dsh-mood-light-spin { to { transform: rotate(360deg); } }",
+        /* --- 柔光晕（散光）：full 层 + 多层 blur>0 的 inset box-shadow 内散射软晕，无边框、几乎无遮挡，不用 mask 抠边 --- */
+        ".dsh-mood-light-glow {",
+        "  position: fixed;",
+        "  inset: 0;",
+        "  z-index: 2147483000;",
+        "  pointer-events: none;",
+        "  box-sizing: border-box;",
+        "  background: none;",
+        "  box-shadow: var(--ml-glow-shadow);",
+        "  opacity: var(--ml-opacity);",
+        "  animation: dsh-mood-light-flash var(--ml-flash) ease-in-out infinite;",
+        "  will-change: opacity;",
+        "}",
+        ".dsh-mood-light-glow[data-flash=\"off\"] { animation: none; }",
+        ".dsh-mood-light-turb {",
+        "  position: absolute;",
+        "  width: 0;",
+        "  height: 0;",
+        "  overflow: hidden;",
+        "}",
         "@media (prefers-reduced-motion: reduce) {",
-        "  .dsh-mood-light, .dsh-mood-light-disc { animation: none; }",
+        "  .dsh-mood-light, .dsh-mood-light-disc, .dsh-mood-light-glow { animation: none; }",
         "}",
         /* --- 设置页 --- */
         ".dsh-mood-light-settings {",
@@ -325,6 +352,39 @@ window.__ModuleLoader__.load({
       return "conic-gradient(from 0deg, " + colors.join(", ") + ")";
     }
 
+    /** 把 #rrggbb 十六进制色转成带 alpha 的 rgba()，非 hex 时原样返回。 */
+    function hexToRgba(hex, alpha) {
+      var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex));
+      if (!m) return hex;
+      var r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+      return "rgba(" + r + ", " + g + ", " + b + ", " + alpha + ")";
+    }
+
+    /**
+     * 柔光晕 box-shadow 串：纯多层 blur>0 的内散射软晕，由屏幕边缘平滑向内
+     * 淡出、无清晰棱线。首层紧贴边缘（spread 接近 w），随后 spread 递增至
+     * w+spread、blur 递增、alpha 递减；近边缘用核心色、外沿用晕色。
+     */
+    function glowShadowString(colors, width, spread) {
+      var core = (colors && colors[0]) || "#10b981";
+      var halo = (colors && colors.length > 1) || false;
+      var haloColor = halo ? colors[1] : core;
+      var w = clamp(numberOr(width, DEFAULT_CONFIG.width), 1, 60);
+      var s = clamp(numberOr(spread, DEFAULT_CONFIG.glowSpread), 0, 200);
+      var max = w + s;
+      var parts = [];
+      var N = 5;
+      for (var i = 0; i < N; i++) {
+        var t = i / (N - 1);                       // 0 = 紧贴边，1 = 最深处
+        var layerSpread = Math.round(w + (max - w) * t);
+        var blur = Math.max(w, Math.round(layerSpread * 0.7));
+        var alpha = Math.max(0.02, 0.6 * (1 - t) + 0.12).toFixed(3);
+        var color = i <= 1 ? core : haloColor;     // 近边缘核心色，外沿晕色
+        parts.push("inset 0 0 " + blur + "px " + layerSpread + "px " + hexToRgba(color, alpha));
+      }
+      return parts.join(", ");
+    }
+
     /** 订阅配置变化的 hook（React 18 安全写法）。 */
     function useConfig() {
       var force = React.useState(0)[1];
@@ -352,6 +412,66 @@ window.__ModuleLoader__.load({
       var opacity = clamp01(numberOr(config.opacity, DEFAULT_CONFIG.opacity));
       var rotate = Math.max(0, numberOr(config.rotate, DEFAULT_CONFIG.rotate));
       var conic = config.gradientType === "conic";
+      var glow = config.gradientType === "glow";
+
+      /* --- 柔光晕（散光）分支 --- */
+      if (glow) {
+        var glowSpread = clamp(numberOr(config.glowSpread, DEFAULT_CONFIG.glowSpread), 0, 200);
+        var glowWobble = clamp(numberOr(config.glowWobble, DEFAULT_CONFIG.glowWobble), 0, 10);
+        var glowStyle = {
+          "--ml-glow-shadow": glowShadowString(colors, width, glowSpread),
+          "--ml-width": width + "px",
+          "--ml-opacity": String(opacity),
+          "--ml-flash": (flash > 0 ? flash : 0) + "s"
+        };
+        var glowChildren = [];
+        if (glowWobble > 0) {
+          glowStyle["filter"] = "url(#dsh-mood-light-turb)";
+          /* 隐蔽 SVG，承载 feTurbulence + feDisplacementMap，让光晕边缘轻微不规则。 */
+          glowChildren.push(React.createElement(
+            "svg",
+            {
+              key: "turb",
+              className: "dsh-mood-light-turb",
+              "aria-hidden": true,
+              style: { position: "absolute", width: 0, height: 0, overflow: "hidden" }
+            },
+            React.createElement(
+              "defs",
+              null,
+              React.createElement(
+                "filter",
+                { id: "dsh-mood-light-turb" },
+                React.createElement("feTurbulence", {
+                  type: "fractalNoise",
+                  baseFrequency: 0.011,
+                  numOctaves: 2,
+                  result: "noise",
+                  seed: 2
+                }),
+                React.createElement("feDisplacementMap", {
+                  in: "SourceGraphic",
+                  in2: "noise",
+                  scale: glowWobble,
+                  xChannelSelector: "R",
+                  yChannelSelector: "G"
+                })
+              )
+            )
+          ));
+        }
+        return React.createElement(
+          "div",
+          {
+            className: "dsh-mood-light-glow",
+            "data-mode": mode,
+            "data-flash": flash > 0 ? "on" : "off",
+            "aria-hidden": true,
+            style: glowStyle
+          },
+          glowChildren
+        );
+      }
 
       var children = [];
       if (conic && rotate > 0) {
@@ -411,7 +531,7 @@ window.__ModuleLoader__.load({
         { className: "dsh-mood-light-settings" },
         React.createElement("h2", null, "氛围灯设置"),
         React.createElement("p", { className: "ml-hint" },
-          "会话运行时在屏幕边缘显示一圈跑马灯光圈：运行中绿色流动、完成粉色、有待处理（审批/提问）黄色警告。"
+          "在屏幕边缘渲染一圈柔和散射光：默认柔光晕（无边框、由边缘平滑向内淡出）、可选跑马灯/线性；运行中绿色呼吸、完成粉色、有待处理（审批/提问）黄色警告。"
         ),
         /* 启用 */
         React.createElement(
@@ -452,9 +572,30 @@ window.__ModuleLoader__.load({
               onChange: function (ev) { setConfig({ gradientType: ev.target.value }); }
             },
             React.createElement("option", { value: "conic" }, "跑马灯（旋转光带）"),
-            React.createElement("option", { value: "linear" }, "线性渐变（静止）")
+            React.createElement("option", { value: "linear" }, "线性渐变（静止）"),
+            React.createElement("option", { value: "glow" }, "柔光晕（散光）")
           )
         ),
+        /* 扩散范围（仅柔光晕） */
+        config.gradientType === "glow"
+          ? React.createElement(SliderField, {
+              label: "扩散范围",
+              min: 0, max: 200, step: 1,
+              value: config.glowSpread,
+              display: config.glowSpread + " px",
+              onChange: function (v) { setConfig({ glowSpread: v }); }
+            })
+          : null,
+        /* 不规则强度（仅柔光晕） */
+        config.gradientType === "glow"
+          ? React.createElement(SliderField, {
+              label: "不规则强度",
+              min: 0, max: 10, step: 0.1,
+              value: config.glowWobble,
+              display: config.glowWobble > 0 ? config.glowWobble.toFixed(1) : "关闭",
+              onChange: function (v) { setConfig({ glowWobble: v }); }
+            })
+          : null,
         /* 光带样式（仅跑马灯） */
         config.gradientType === "conic"
           ? React.createElement(
