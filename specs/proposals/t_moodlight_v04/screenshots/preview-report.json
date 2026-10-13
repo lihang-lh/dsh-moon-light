@@ -1,0 +1,55 @@
+{
+ "page": "file:///Users/lihang/gitlab1/dsh-mood-light/docs/preview.html",
+ "shots": [
+  {
+   "mode": "running",
+   "file": "preview-mode-running.png",
+   "ring": {
+    "mode": "running",
+    "cls": "dsh-mood-light is-glow"
+   }
+  },
+  {
+   "mode": "success",
+   "file": "preview-mode-success.png",
+   "ring": {
+    "mode": "success",
+    "cls": "dsh-mood-light is-glow"
+   }
+  },
+  {
+   "mode": "warning",
+   "file": "preview-mode-warning.png",
+   "ring": {
+    "mode": "warning",
+    "cls": "dsh-mood-light is-glow"
+   }
+  },
+  {
+   "mode": "planReview",
+   "file": "preview-mode-planReview.png",
+   "ring": {
+    "mode": "planReview",
+    "cls": "dsh-mood-light is-glow"
+   }
+  },
+  {
+   "mode": "question",
+   "file": "preview-mode-question.png",
+   "ring": {
+    "mode": "question",
+    "cls": "dsh-mood-light is-glow"
+   }
+  }
+ ],
+ "errors": [],
+ "sweep": {
+  "cls": "dsh-mood-light-sweep is-active",
+  "opacity": "0.85"
+ },
+ "theme": {
+  "dark": false,
+  "scale": ""
+ },
+ "finalErrors": []
+}

@@ -1,0 +1,185 @@
+{
+ "steps": [
+  {
+   "step": "0. 登录并进入应用",
+   "ok": true,
+   "detail": "http://127.0.0.1:19487/"
+  },
+  {
+   "step": "0b. 前置清理：首页回到非待处理态（可重复运行）",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "step": "1. 首页渲染氛围灯 success 态（glow 三层）",
+   "ok": true,
+   "detail": "{\"present\": true, \"mode\": \"success\", \"cls\": \"dsh-mood-light is-glow\", \"flash\": \"off\", \"sweeps\": 0, \"glows\": 1, \"fills\": 1, \"grains\": 1, \"bars\": 0, \"barText\": \"\", \"barBtn\": false, \"capsuleOpen\": false, \"capsuleText\": \"确认收到消息 / 已完成 / 另有 909 个会话\", \"themeScale\": \"1.35\"}"
+  },
+  {
+   "step": "1b. 浅色主题 --ml-theme-scale=1.35",
+   "ok": true,
+   "detail": "1.35"
+  },
+  {
+   "step": "2. 顶部悬浮展开胶囊",
+   "ok": true,
+   "detail": "确认收到消息 / 已完成 / 另有 909 个会话"
+  },
+  {
+   "step": "3. 首页草稿 composer 可用",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "step": "3b. 消息已发出",
+   "ok": true,
+   "detail": "''"
+  },
+  {
+   "step": "4. 进入 running 态（以 MutationObserver 记录为准）",
+   "ok": true,
+   "detail": "实时抓到运行帧 | [{\"type\": \"mode\", \"from\": \"success\", \"to\": \"running\", \"t\": 2093}, {\"type\": \"mode\", \"from\": \"success\", \"to\": \"running\", \"t\": 2093}]"
+  },
+  {
+   "step": "5. 结束回到 data-mode=success",
+   "ok": true,
+   "detail": "dsh-mood-light is-glow"
+  },
+  {
+   "step": "6. 记录到 running→success 状态切换",
+   "ok": true,
+   "detail": "[{\"type\": \"init\", \"mode\": \"success\", \"t\": 0}, {\"type\": \"mode\", \"from\": \"success\", \"to\": \"running\", \"t\": 2093}, {\"type\": \"mode\", \"from\": \"success\", \"to\": \"running\", \"t\": 2093}, {\"type\": \"mode\", \"from\": \"running\", \"to\": \"success\", \"t\": 3036}, {\"type\": \"sweep-added\", \"cls\": \"dsh-mood-light-sweep is-active\", \"t\": 3036}, {\"type\": \"mode\", \"from\": \"running\", \"to\": \"success\", \"t\": 3036}]"
+  },
+  {
+   "step": "6b. success 触发一次性扫光",
+   "ok": true,
+   "detail": "[{\"type\": \"sweep-added\", \"cls\": \"dsh-mood-light-sweep is-active\", \"t\": 3036}]"
+  },
+  {
+   "step": "7. 会话内渲染状态条",
+   "ok": true,
+   "detail": "氛围灯 / 已完成 · 另有 910 个会话 / ◉"
+  },
+  {
+   "step": "8. 状态条内一键开关存在",
+   "ok": true,
+   "detail": "关闭氛围灯"
+  },
+  {
+   "step": "8b. 点击后氛围灯关闭（状态条随之消失 —— 单向关闭，符合 spec）",
+   "ok": true,
+   "detail": "{\"present\": false, \"mode\": null, \"cls\": null, \"flash\": null, \"sweeps\": 0, \"glows\": 0, \"fills\": 0, \"grains\": 0, \"bars\": 0, \"barText\": \"\", \"barBtn\": false, \"capsuleOpen\": false, \"capsuleText\": \"\", \"themeScale\": null}"
+  },
+  {
+   "step": "8c. 快捷键 Cmd+Shift+M 在关闭态下可重新开启",
+   "ok": true,
+   "detail": "{\"present\": true, \"mode\": \"success\", \"cls\": \"dsh-mood-light is-glow\", \"flash\": \"off\", \"sweeps\": 0, \"glows\": 1, \"fills\": 1, \"grains\": 1, \"bars\": 1, \"barText\": \"氛围灯 / 已完成 · 另有 910 个会话 / ◉\", \"barBtn\": true, \"capsuleOpen\": false, \"capsuleText\": \"确认收到消息 / 已完成 / 另有 910 个会话\", \"themeScale\": \"1.35\"}"
+  },
+  {
+   "step": "9. 深色主题 --ml-theme-scale=0.85",
+   "ok": true,
+   "detail": "0.85"
+  },
+  {
+   "step": "10. 快捷键 Cmd+Shift+M 关闭",
+   "ok": true,
+   "detail": "True->False"
+  },
+  {
+   "step": "10b. 再按恢复",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "step": "11. 待处理态（approval/plan-review/question）实机可见",
+   "ok": true,
+   "detail": "question"
+  }
+ ],
+ "consoleErrors": [],
+ "mlLog": [
+  {
+   "type": "init",
+   "mode": "success",
+   "t": 0
+  },
+  {
+   "type": "mode",
+   "from": "success",
+   "to": "running",
+   "t": 2093
+  },
+  {
+   "type": "mode",
+   "from": "success",
+   "to": "running",
+   "t": 2093
+  },
+  {
+   "type": "mode",
+   "from": "running",
+   "to": "success",
+   "t": 3036
+  },
+  {
+   "type": "sweep-added",
+   "cls": "dsh-mood-light-sweep is-active",
+   "t": 3036
+  },
+  {
+   "type": "mode",
+   "from": "running",
+   "to": "success",
+   "t": 3036
+  },
+  {
+   "type": "mode",
+   "from": "success",
+   "to": "running",
+   "t": 11745
+  },
+  {
+   "type": "mode",
+   "from": "success",
+   "to": "running",
+   "t": 11745
+  },
+  {
+   "type": "mode",
+   "from": "running",
+   "to": "question",
+   "t": 12796
+  },
+  {
+   "type": "mode",
+   "from": "running",
+   "to": "question",
+   "t": 12796
+  }
+ ],
+ "timeline": [
+  {
+   "i": 0,
+   "mode": "running",
+   "sweeps": 0,
+   "bars": 1
+  }
+ ],
+ "pendingMode": "question",
+ "finalState": {
+  "present": true,
+  "mode": "question",
+  "cls": "dsh-mood-light is-glow",
+  "flash": "on",
+  "sweeps": 0,
+  "glows": 2,
+  "fills": 1,
+  "grains": 1,
+  "bars": 1,
+  "barText": "氛围灯等待你的回答 · 另有 910 个会话（1 个待处理）◉",
+  "barBtn": true,
+  "capsuleOpen": false,
+  "capsuleText": "收到 / 等待你的回答 / 另有 910 个会话（1 个待处理）",
+  "themeScale": "1.35"
+ }
+}

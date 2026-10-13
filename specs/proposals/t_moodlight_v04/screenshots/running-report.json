@@ -1,0 +1,30 @@
+{
+ "steps": [
+  {
+   "step": "登录并进入应用",
+   "ok": true,
+   "detail": "http://127.0.0.1:19487/"
+  },
+  {
+   "step": "前置清理：无遗留待回答",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "step": "首页草稿 composer 可用",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "step": "抓到 data-mode=running 实机帧",
+   "ok": true,
+   "detail": "{\"present\": true, \"mode\": \"running\", \"cls\": \"dsh-mood-light is-glow\", \"bars\": 1, \"barText\": \"氛围灯 / 正在运行 · 另有 909 个会话 / ◉\"}"
+  },
+  {
+   "step": "运行结束后回到非 running 态",
+   "ok": true,
+   "detail": "{\"present\": true, \"mode\": \"success\", \"cls\": \"dsh-mood-light is-glow\", \"bars\": 1, \"barText\": \"氛围灯 / 已完成 · 另有 909 个会话 / ◉\"}"
+  }
+ ],
+ "consoleErrors": []
+}

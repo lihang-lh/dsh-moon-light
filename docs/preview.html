@@ -3,29 +3,45 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>dsh-mood-light · 氛围灯预览（跑马灯 / 线性 / 柔光晕）</title>
+<title>dsh-mood-light · 氛围灯预览（v0.4 五态 / 环境光 / 噪点 / 扫光 / 胶囊）</title>
 <style>
-  /* ===== 与插件一致的跑马灯光环实现 ===== */
+  /* ===================================================================
+     一、与插件一致的渲染实现（v0.4.0）
+     本页零依赖复刻 client.js 的渲染逻辑，不需要宿主即可预览。
+     =================================================================== */
   .dsh-mood-light {
     position: fixed;
     inset: 0;
     z-index: 2147483000;
     pointer-events: none;
     box-sizing: border-box;
+    --ml-flash-floor: 0.35;
+    --ml-theme-scale: 1;
+    /* 环境光强度：--ml-opacity(用户值) × 0.16 × 主题系数 × 面板强度 */
+    --ml-fill-opacity: calc(var(--ml-opacity) * 0.16 * var(--ml-theme-scale) * var(--ml-fill-strength, 1));
+  }
+  /* 深色底上光更容易过曝 → 压低；浅色底上光容易被冲淡 → 提高 */
+  body[data-ds-dark-theme] .dsh-mood-light { --ml-theme-scale: 0.85; }
+  body:not([data-ds-dark-theme]) .dsh-mood-light { --ml-theme-scale: 1.35; }
+
+  /* --- 0. 不透明度与闪动：统一乘主题系数，JS 只写裸值 --- */
+  @keyframes dsh-mood-light-flash {
+    0%, 100% { opacity: calc(var(--ml-opacity) * var(--ml-theme-scale)); }
+    50%      { opacity: calc(var(--ml-opacity) * var(--ml-theme-scale) * var(--ml-flash-floor)); }
+  }
+
+  /* --- 1. 跑马灯 / 线性渐变（conic | linear，保持旧渲染路径） --- */
+  .dsh-mood-light.is-conic,
+  .dsh-mood-light.is-linear {
     padding: var(--ml-width);
     background: var(--ml-gradient);
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask-composite: exclude;
-    opacity: var(--ml-opacity);
+    opacity: calc(var(--ml-opacity) * var(--ml-theme-scale));
     animation: dsh-mood-light-flash var(--ml-flash) ease-in-out infinite;
     will-change: opacity;
-  }
-  .dsh-mood-light[data-flash="off"] { animation: none; }
-  @keyframes dsh-mood-light-flash {
-    0%, 100% { opacity: var(--ml-opacity); }
-    50% { opacity: calc(var(--ml-opacity) * 0.35); }
   }
   .dsh-mood-light-disc {
     position: absolute;
@@ -35,201 +51,734 @@
     will-change: transform;
   }
   @keyframes dsh-mood-light-spin { to { transform: rotate(360deg); } }
-  /* 柔光晕（散光）：覆盖主样式，改用多层 inset box-shadow + SVG 位移滤镜 */
-  .dsh-mood-light.dsh-mood-light-glow {
-    background: none;
-    padding: 0;
-    -webkit-mask: none;
-    mask: none;
-    box-shadow: var(--ml-glow-shadow);
+
+  /* --- 2. 环境光 fill：上下两片 radial-gradient 染色 --- */
+  .dsh-mood-light-fill {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(90% 55% at 50% 0%,   var(--ml-fill-a) 0%, transparent 72%),
+      radial-gradient(70% 45% at 50% 100%, var(--ml-fill-b) 0%, transparent 70%);
+    opacity: var(--ml-fill-opacity);
+    transition: opacity var(--ml-transition, 700ms) ease;
+    pointer-events: none;
   }
+
+  /* --- 3. 噪点 grain：tile 化 data-URI SVG noise（不用全屏 feTurbulence 滤镜） --- */
+  .dsh-mood-light-grain {
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 160px 160px;
+    opacity: var(--ml-grain, 0.035);
+    mix-blend-mode: overlay;
+    pointer-events: none;
+  }
+
+  /* --- 4. 边缘光 glow + 双层 crossfade --- */
+  /* 层容器：出层与入层各自整体做 opacity 过渡（不直接过渡 box-shadow，跨浏览器插值不可靠） */
+  .dsh-mood-light-layer {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity var(--ml-transition, 700ms) ease;
+    pointer-events: none;
+  }
+  .dsh-mood-light-glow {
+    position: absolute;
+    inset: 0;
+    box-shadow: var(--ml-glow-shadow);
+    opacity: calc(var(--ml-opacity) * var(--ml-theme-scale));
+    animation: dsh-mood-light-flash var(--ml-flash) ease-in-out infinite;
+    will-change: opacity;
+  }
+  /* flash 为 0 的稳态模式不闪（属性写在根元素上，与插件 DOM 契约一致） */
+  .dsh-mood-light[data-flash="off"] { animation: none; }
+  .dsh-mood-light[data-flash="off"] .dsh-mood-light-glow { animation: none; }
   .dsh-mood-light-turb {
     position: absolute;
     width: 0;
     height: 0;
     overflow: hidden;
   }
-  @media (prefers-reduced-motion: reduce) {
-    .dsh-mood-light, .dsh-mood-light-disc { animation: none; }
+
+  /* --- 5. 完成扫光 sweep：复用抠环遮罩，斜向亮带横掠一遍 --- */
+  .dsh-mood-light-sweep {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    padding: var(--ml-width);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    background: linear-gradient(115deg, transparent 38%, var(--ml-sweep-color) 50%, transparent 62%);
+    background-repeat: no-repeat;
+    background-size: 260% 100%;
+    background-position: 160% 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .dsh-mood-light-sweep.is-active {
+    animation: dsh-mood-light-sweep 1150ms cubic-bezier(0.33, 0, 0.2, 1) 1 forwards;
+  }
+  @keyframes dsh-mood-light-sweep {
+    0%   { background-position: 160% 0; opacity: 0; }
+    18%  { opacity: 0.85; }
+    82%  { opacity: 0.85; }
+    100% { background-position: -60% 0; opacity: 0; }
   }
 
-  /* ===== 预览页样式 ===== */
+  /* --- 6. 交互层：顶部触发带 + 胶囊 --- */
+  .dsh-mood-light-hit {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--ml-hit-height, 10px);
+    z-index: 2147483000;
+    pointer-events: auto;
+  }
+  .dsh-mood-light-capsule {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-6px);
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    max-width: min(560px, calc(100vw - 32px));
+    height: 34px;
+    padding: 0 12px;
+    box-sizing: border-box;
+    border-radius: var(--dsw-radius-md, 10px);
+    background: var(--dsw-specific-menu, rgba(28, 28, 30, 0.86));
+    -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter, blur(18px));
+    backdrop-filter: var(--dsw-menu-backdrop-filter, blur(18px));
+    box-shadow: var(--dsw-elevation-panel, 0 8px 28px rgba(0, 0, 0, 0.28));
+    color: var(--dsw-alias-label-primary, #e8e8ea);
+    font-size: 13px;
+    line-height: 20px;
+    pointer-events: auto;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 180ms ease, transform 180ms ease;
+    z-index: 2147483002;
+  }
+  .dsh-mood-light-capsule.is-open { opacity: 1; transform: translateX(-50%) translateY(0); }
+  /* 静态副本：本页演示区里就地展示胶囊样式，不参与 fixed 定位 */
+  .dsh-mood-light-capsule.is-inline { position: static; transform: none; max-width: 100%; }
+  .dsh-mood-light-capsule.is-off,
+  .dsh-mood-light-hit.is-off { display: none; }
+  .ml-dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .ml-capsule-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ml-capsule-sub {
+    flex: 0 0 auto;
+    color: var(--dsw-alias-label-tertiary, #8b93a1);
+    white-space: nowrap;
+  }
+
+  /* --- 7. 输入框下方 36px 常驻状态条 --- */
+  .dsh-mood-light-bar-dock {
+    box-sizing: border-box;
+    width: calc(100% - var(--dsh-composer-side-clearance, 0px) - var(--dsh-composer-side-clearance, 0px) - var(--dsh-composer-dock-inset, 0px) - var(--dsh-composer-dock-inset, 0px));
+    margin: 0 auto;
+  }
+  .dsh-mood-light-bar {
+    box-sizing: border-box;
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    max-width: calc(var(--dsh-composer-card-max-width, 720px) - 4 * var(--dsh-composer-dock-inset, 0px));
+    height: 36px;
+    margin: 0 auto;
+    padding: 4px 5px 4px 12px;
+    border-radius: var(--dsw-radius-md, 10px);
+    box-shadow: var(--dsw-elevation-panel, 0 6px 20px rgba(0, 0, 0, 0.18));
+    color: var(--dsw-alias-label-primary, #e8e8ea);
+    font-size: 13px;
+    line-height: 20px;
+  }
+  .dsh-mood-light-bar::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: var(--dsw-specific-menu, rgba(28, 28, 30, 0.86));
+    -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter, blur(18px));
+    backdrop-filter: var(--dsw-menu-backdrop-filter, blur(18px));
+    pointer-events: none;
+  }
+  .ml-bar-label { flex: 0 0 auto; }
+  .ml-bar-sum {
+    flex: 0 0 auto;
+    margin-left: auto;
+    color: var(--dsw-alias-label-tertiary, #8b93a1);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ml-bar-toggle {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--dsw-alias-label-secondary, #a8b0bd);
+    cursor: pointer;
+  }
+  .ml-bar-toggle:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.1)); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dsh-mood-light.is-conic,
+    .dsh-mood-light.is-linear,
+    .dsh-mood-light-disc,
+    .dsh-mood-light-glow,
+    .dsh-mood-light-sweep.is-active { animation: none; }
+    .dsh-mood-light-layer { transition: none; }
+  }
+
+  /* ===================================================================
+     二、预览页自身
+     =================================================================== */
+  /* 模拟宿主注入的 --dsw-* 设计令牌（深色一套） */
+  html, body {
+    --dsw-radius-md: 10px;
+    --dsw-specific-menu: rgba(28, 28, 30, 0.86);
+    --dsw-menu-backdrop-filter: blur(18px);
+    --dsw-elevation-panel: 0 8px 28px rgba(0, 0, 0, 0.28);
+    --dsw-alias-label-primary: #e8e8ea;
+    --dsw-alias-label-secondary: #a8b0bd;
+    --dsw-alias-label-tertiary: #8b93a1;
+    --dsw-alias-interactive-bg-hover: rgba(255, 255, 255, 0.1);
+  }
+  /* 浅色令牌（无 data-ds-dark-theme 即浅色，与插件判定一致） */
+  body:not([data-ds-dark-theme]) {
+    --dsw-specific-menu: rgba(255, 255, 255, 0.9);
+    --dsw-elevation-panel: 0 8px 28px rgba(0, 0, 0, 0.14);
+    --dsw-alias-label-primary: #1f2329;
+    --dsw-alias-label-secondary: #5b6472;
+    --dsw-alias-label-tertiary: #8a919e;
+    --dsw-alias-interactive-bg-hover: rgba(0, 0, 0, 0.06);
+  }
+
   body {
     margin: 0;
     min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
     background: #10141a;
     color: #e6e9ef;
   }
-  .stage { text-align: center; max-width: 480px; padding: 24px; }
-  .stage h1 { font-size: 20px; margin: 0 0 6px; }
-  .stage p { font-size: 13px; color: #9aa3b2; line-height: 1.7; margin: 0 0 18px; }
-  .stage code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  body:not([data-ds-dark-theme]) { background: #eef1f6; color: #1f2329; }
+
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 64px 20px 64px;
+    box-sizing: border-box;
+  }
+  @media (max-width: 1180px) {
+    .page { margin-left: 20px; margin-right: 306px; }
+  }
+  .page h1 { font-size: 21px; margin: 0 0 10px; text-align: center; }
+  .page > p { font-size: 13px; line-height: 1.9; color: #9aa3b2; margin: 0 0 26px; text-align: center; }
+  body:not([data-ds-dark-theme]) .page > p { color: #5b6472; }
+  .page code { background: rgba(127, 127, 127, 0.16); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  .page p b { color: #e6e9ef; }
+  body:not([data-ds-dark-theme]) .page p b { color: #1f2329; }
+
+  .demo {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    padding: 18px 18px 20px;
+    background: rgba(255, 255, 255, 0.03);
+  }
+  body:not([data-ds-dark-theme]) .demo { border-color: rgba(0, 0, 0, 0.1); background: rgba(0, 0, 0, 0.02); }
+  .demo-head { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .demo-note { font-size: 12px; line-height: 1.7; color: #8b93a1; margin: 0 0 14px; }
+  .demo-slot { position: relative; margin-bottom: 14px; }
+  .demo-slot-label {
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    color: #8b93a1;
+    margin-bottom: 6px;
+  }
+  .demo-input {
+    height: 74px;
+    box-sizing: border-box;
+    border-radius: 14px;
+    padding: 14px;
+    font-size: 13px;
+    color: #7f8899;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin-bottom: 8px;
+  }
+  body:not([data-ds-dark-theme]) .demo-input { background: #ffffff; border-color: rgba(0, 0, 0, 0.1); color: #8a919e; }
 
   .panel {
     position: fixed;
     top: 16px;
     right: 16px;
-    width: 260px;
+    width: 280px;
     max-height: calc(100vh - 32px);
     overflow-y: auto;
     box-sizing: border-box;
-    padding: 14px 16px;
+    padding: 14px 16px 18px;
     border-radius: 12px;
-    background: rgba(24, 29, 38, 0.92);
-    border: 1px solid rgba(255,255,255,0.1);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    background: rgba(24, 29, 38, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     font-size: 13px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
+    z-index: 2147483100;
+  }
+  body:not([data-ds-dark-theme]) .panel {
+    background: rgba(255, 255, 255, 0.96);
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14);
+    color: #1f2329;
   }
   .panel h2 { font-size: 14px; margin: 0; }
+  .group { display: flex; flex-direction: column; gap: 8px; }
+  .group-title {
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    color: #7f8899;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 4px;
+  }
+  body:not([data-ds-dark-theme]) .group-title { border-color: rgba(0, 0, 0, 0.1); color: #8a919e; }
   .field { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .field label { color: #9aa3b2; white-space: nowrap; }
-  .field input[type="range"] { width: 110px; accent-color: #34d399; }
+  body:not([data-ds-dark-theme]) .field label { color: #5b6472; }
+  .field input[type="range"] { width: 104px; accent-color: #34d399; }
+  .field input[type="checkbox"] { width: 16px; height: 16px; accent-color: #34d399; }
+  .field input[type="number"] {
+    width: 54px; padding: 3px 6px; border-radius: 6px; font-size: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2); background: #1c2330; color: #e6e9ef;
+  }
+  .field input[type="text"] {
+    width: 138px; padding: 3px 6px; border-radius: 6px; font-size: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2); background: #1c2330; color: #e6e9ef;
+  }
+  body:not([data-ds-dark-theme]) .field input[type="number"],
+  body:not([data-ds-dark-theme]) .field input[type="text"],
+  body:not([data-ds-dark-theme]) .field select { background: #ffffff; color: #1f2329; border-color: rgba(0, 0, 0, 0.18); }
   .field input[type="color"] {
-    width: 30px; height: 22px; padding: 0; border: 1px solid rgba(255,255,255,0.2);
+    width: 28px; height: 22px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 5px; background: transparent; cursor: pointer;
   }
   .field select {
-    padding: 3px 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2);
+    padding: 3px 6px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.2);
     background: #1c2330; color: #e6e9ef; font-size: 12px;
   }
-  .states { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); }
-  .state-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-  .state-row .name { width: 44px; color: #9aa3b2; }
-  .state-row .swatch { width: 60px; height: 10px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.15); }
+  .hint { font-size: 11px; line-height: 1.6; color: #8b93a1; margin: -4px 0 0; }
   .mode-btns { display: flex; gap: 6px; flex-wrap: wrap; }
   .mode-btns button {
-    flex: 1;
-    padding: 6px 0;
-    border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.15);
-    background: #1c2330;
-    color: #e6e9ef;
-    cursor: pointer;
-    font-size: 12px;
+    flex: 1 1 auto; min-width: 62px; padding: 6px 2px; border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.15); background: #1c2330; color: #e6e9ef;
+    cursor: pointer; font-size: 12px;
   }
-  .mode-btns button.active { border-color: #34d399; background: rgba(52,211,153,0.18); }
+  .mode-btns button.wide { flex: 1 1 100%; }
+  .mode-btns button.active { border-color: #34d399; background: rgba(52, 211, 153, 0.18); }
+  .state-list { display: flex; flex-direction: column; gap: 8px; }
+  .state-item {
+    display: flex; flex-direction: column; gap: 5px;
+    padding: 7px 8px; border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .state-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .state-top .name { font-size: 12px; color: #b9c0cc; }
+  .state-top .flash { font-size: 11px; color: #8b93a1; display: flex; align-items: center; gap: 3px; }
+  .state-top .flash input {
+    width: 48px; padding: 2px 4px; border-radius: 5px; font-size: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.2); background: #1c2330; color: #e6e9ef;
+  }
+  .state-bottom { display: flex; align-items: center; gap: 6px; }
+  .state-bottom .swatch { flex: 1 1 auto; height: 10px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.15); }
+  body:not([data-ds-dark-theme]) .mode-btns button,
+  body:not([data-ds-dark-theme]) .state-top .flash input { background: #ffffff; color: #1f2329; border-color: rgba(0, 0, 0, 0.18); }
+  body:not([data-ds-dark-theme]) .state-item { border-color: rgba(0, 0, 0, 0.1); }
+  body:not([data-ds-dark-theme]) .state-top .name { color: #3c4450; }
+  .btn-row { display: flex; gap: 8px; }
+  .btn-row button {
+    flex: 1 1 auto; padding: 6px 8px; border-radius: 8px; font-size: 12px; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.15); background: #1c2330; color: #e6e9ef;
+  }
+  body:not([data-ds-dark-theme]) .btn-row button { background: #ffffff; color: #1f2329; border-color: rgba(0, 0, 0, 0.18); }
+  .btn-row button:hover { border-color: rgba(52, 211, 153, 0.7); }
+  .is-hidden { display: none !important; }
 </style>
 </head>
-<body>
-<div id="ring" class="dsh-mood-light" aria-hidden="true"></div>
+<body data-ds-dark-theme>
 
-<!-- 隐蔽 SVG：承载 feTurbulence + feDisplacementMap，让柔光晕边缘轻微不规则 -->
-<svg id="turbWrap" class="dsh-mood-light-turb" aria-hidden="true">
-  <defs>
-    <filter id="dsh-mood-light-turb">
-      <feTurbulence type="fractalNoise" baseFrequency="0.011" numOctaves="2" result="noise" seed="2"></feTurbulence>
-      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
-    </filter>
-  </defs>
-</svg>
+<!-- ===== 氛围灯渲染层（与插件同构） ===== -->
+<div id="ring" class="dsh-mood-light is-glow" data-mode="running" data-flash="on" aria-hidden="true">
+  <!-- 2. 噪点 -->
+  <div class="dsh-mood-light-grain" id="grain" hidden></div>
+  <!-- 3/4. 入层（出层由 JS 动态快照插入到它前面） -->
+  <div class="dsh-mood-light-layer" id="layerIn" style="opacity:1">
+    <div class="dsh-mood-light-fill"></div>
+    <div class="dsh-mood-light-glow"></div>
+  </div>
+  <!-- 5. 扫光 -->
+  <div class="dsh-mood-light-sweep" id="sweep" hidden></div>
+  <!-- conic 专用：旋转盘 -->
+  <div class="dsh-mood-light-disc" id="disc" hidden></div>
+  <!-- 隐蔽 SVG：承载 feTurbulence + feDisplacementMap（仅 glowWobble > 0 时挂到 glow 层上） -->
+  <svg class="dsh-mood-light-turb" id="turbWrap" aria-hidden="true">
+    <defs>
+      <filter id="dsh-mood-light-turb">
+        <feTurbulence type="fractalNoise" baseFrequency="0.011" numOctaves="2" result="noise" seed="2"></feTurbulence>
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="0" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
+      </filter>
+    </defs>
+  </svg>
+</div>
 
+<!-- ===== 交互层：顶部触发带 + 胶囊 ===== -->
+<div class="dsh-mood-light-hit is-off" id="hit"></div>
+<div class="dsh-mood-light-capsule is-off" id="capsule" title="">
+  <span class="ml-dot"></span>
+  <span class="ml-capsule-title">修复登录问题</span>
+  <span class="ml-capsule-sub">待审批 · 另有 2 个会话（1 待处理）</span>
+</div>
+
+<!-- ===== 预览页正文 ===== -->
+<div class="page">
+  <h1>dsh-mood-light · 氛围灯预览（v0.4.0）</h1>
+  <p>
+    本页是零依赖单文件预览，复刻 <code>client.js</code> 的渲染逻辑，不需要宿主即可查看效果。<br>
+    v0.4 要点：状态由三态扩为五态（运行中 / 已完成 / <b>待审批</b> / <b>计划待审</b> / <b>待回答</b>）；
+    新增环境光、噪点质感、完成扫光与双层 crossfade 平滑过渡；深浅色自动适配；
+    <code>glowWobble</code> 默认由 1 改为 0（不再默认对全屏施加 SVG 滤镜，属性能修复）；
+    新增顶部触发带 + 悬浮胶囊与输入框下 36px 状态条两种交互。<br>
+    右侧面板可实时调参；<b>把鼠标移到页面最顶部 10px 内</b>即可唤出真实胶囊（移开 220ms 后淡出），
+    面板中的<b>「切换到浅色 / 深色」</b>按钮可在两种主题间切换，便于对比截图。
+  </p>
+
+  <div class="demo">
+    <div class="demo-head">交互层 · 静态演示</div>
+    <p class="demo-note">
+      分工：<b>胶囊</b>是鼠标贴屏幕顶部边缘时浮现的临时入口，显示「状态点 + 当前会话标题 + 状态文案 + 多会话汇总」，
+      真实插件里点击可跳转到最需要注意的会话；<b>状态条</b>常驻在输入框下方，显示「氛围灯 · 当前状态 + 多会话汇总」，
+      右侧 28px 按钮一键开关氛围灯。两者内容同源，区别只在触发方式与是否需要点击。
+    </p>
+
+    <div class="demo-slot">
+      <div class="demo-slot-label">① 顶部胶囊（静态样式副本，实际由鼠标贴顶部边缘唤出）</div>
+      <div class="dsh-mood-light-capsule is-open is-inline" id="capsuleStatic">
+        <span class="ml-dot"></span>
+        <span class="ml-capsule-title">修复登录问题</span>
+        <span class="ml-capsule-sub">待审批 · 另有 2 个会话（1 待处理）</span>
+      </div>
+    </div>
+
+    <div class="demo-slot" style="margin-bottom:0">
+      <div class="demo-slot-label">② 输入框下方常驻状态条（模拟宿主输入区）</div>
+      <div class="demo-input">给 DSH 发消息…（此处为模拟的宿主输入框）</div>
+      <div class="dsh-mood-light-bar-dock" id="barDock">
+        <div class="dsh-mood-light-bar">
+          <span class="ml-dot" id="barDot"></span>
+          <span class="ml-bar-label">氛围灯 · <span id="barStatus">待审批</span></span>
+          <span class="ml-bar-sum" id="barSum">另有 2 个会话（1 待处理）</span>
+          <button class="ml-bar-toggle" id="barToggle" type="button" title="开关氛围灯" aria-label="开关氛围灯">
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
+              <path d="M8 1.6v5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"></path>
+              <path d="M4.5 3.9a5.1 5.1 0 1 0 7 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 控制面板 ===== -->
 <aside class="panel">
   <h2>氛围灯预览 · 参数调节</h2>
-  <div class="field">
-    <label>会话状态</label>
+
+  <div class="group">
+    <div class="group-title">状态</div>
     <div class="mode-btns" id="modeBtns">
       <button data-mode="running">运行中</button>
-      <button data-mode="success">完成</button>
-      <button data-mode="warning">待处理</button>
-      <button data-mode="off">关闭</button>
+      <button data-mode="success">已完成</button>
+      <button data-mode="warning">待审批</button>
+      <button data-mode="planReview">计划待审</button>
+      <button data-mode="question">待回答</button>
+      <button data-mode="off" class="wide">关闭（enabled = false）</button>
+    </div>
+    <p class="hint">五态优先级：待审批 &gt; 待回答 &gt; 计划待审 &gt; 运行中 &gt; 已完成。</p>
+  </div>
+
+  <div class="group">
+    <div class="group-title">视觉</div>
+    <div class="field">
+      <label>光圈宽度 <span id="vWidth">8</span>px</label>
+      <input type="range" id="width" min="1" max="40" step="1" value="8">
+    </div>
+    <div class="field">
+      <label>不透明度 <span id="vOpacity">60</span>%</label>
+      <input type="range" id="opacity" min="5" max="100" step="5" value="60">
+    </div>
+    <div class="field">
+      <label>效果样式</label>
+      <select id="style">
+        <option value="glow" selected>柔光晕（散光，默认）</option>
+        <option value="segments">分段跑马灯（经典）</option>
+        <option value="smooth">平滑跑马灯（柔和）</option>
+        <option value="linear">线性渐变（静止）</option>
+      </select>
+    </div>
+    <div class="field is-hidden" id="fieldRotate">
+      <label>转速 <span id="vRotate">16</span> 秒/圈</label>
+      <input type="range" id="rotate" min="0" max="60" step="1" value="16">
+    </div>
+    <div class="field" id="fieldGlowSpread">
+      <label>扩散范围 <span id="vGlowSpread">24</span> px</label>
+      <input type="range" id="glowSpread" min="0" max="200" step="1" value="24">
+    </div>
+    <div class="field" id="fieldGlowWobble">
+      <label>不规则强度 <span id="vGlowWobble">关闭</span></label>
+      <input type="range" id="glowWobble" min="0" max="10" step="0.1" value="0">
+    </div>
+    <p class="hint is-hidden" id="wobbleHint">开启会在全屏施加 SVG 位移动滤镜，每帧重绘整屏像素，可能影响低帧率设备；默认关闭。</p>
+  </div>
+
+  <div class="group" id="motionGroup">
+    <div class="group-title">动效（仅柔光晕）</div>
+    <div class="field">
+      <label>过渡时长 <span id="vTransition">700</span>ms</label>
+      <input type="range" id="transition" min="0" max="1500" step="50" value="700">
+    </div>
+    <div class="field">
+      <label>环境光</label>
+      <input type="checkbox" id="fillOn" checked>
+    </div>
+    <div class="field">
+      <label>环境光强度 <span id="vFillStrength">100</span>%</label>
+      <input type="range" id="fillStrength" min="0" max="200" step="5" value="100">
+    </div>
+    <div class="field">
+      <label>噪点强度 <span id="vGrain">0.035</span></label>
+      <input type="range" id="grain" min="0" max="0.15" step="0.005" value="0.035">
+    </div>
+    <div class="field">
+      <label>完成扫光</label>
+      <input type="checkbox" id="sweepOn" checked>
+    </div>
+    <div class="btn-row">
+      <button id="playSweep" type="button">播放扫光</button>
+    </div>
+    <p class="hint">扫光在「运行中 → 已完成」时自动播一次，也可手动触发便于截图。</p>
+  </div>
+
+  <div class="group">
+    <div class="group-title">交互（静态演示）</div>
+    <div class="field">
+      <label>悬浮胶囊</label>
+      <input type="checkbox" id="capsuleOn" checked>
+    </div>
+    <div class="field">
+      <label>触发带高度 <span id="vHitHeight">10</span>px</label>
+      <input type="range" id="hitHeight" min="4" max="40" step="1" value="10">
+    </div>
+    <div class="field">
+      <label>胶囊常驻显示</label>
+      <input type="checkbox" id="pinned">
+    </div>
+    <div class="field">
+      <label>状态条</label>
+      <input type="checkbox" id="statusBarOn" checked>
+    </div>
+    <div class="field">
+      <label>会话标题</label>
+      <input type="text" id="title" value="修复登录问题">
+    </div>
+    <div class="field">
+      <label>其他会话数</label>
+      <input type="number" id="others" min="0" max="5" step="1" value="2">
+    </div>
+    <div class="field">
+      <label>其中待处理</label>
+      <input type="number" id="pending" min="0" max="5" step="1" value="1">
+    </div>
+    <p class="hint">「胶囊常驻显示」仅为方便截图；实际由鼠标贴顶部边缘唤出。</p>
+  </div>
+
+  <div class="group">
+    <div class="group-title">主题</div>
+    <div class="btn-row">
+      <button id="themeBtn" type="button">切换到浅色</button>
+    </div>
+    <p class="hint">切换 <code>body[data-ds-dark-theme]</code>：深色 --ml-theme-scale = 0.85，浅色 = 1.35。</p>
+  </div>
+
+  <div class="group">
+    <div class="group-title">状态颜色（五态，各 3 个取色器）</div>
+    <div class="state-list">
+      <div class="state-item">
+        <div class="state-top">
+          <span class="name">运行中</span>
+          <label class="flash">闪动 <input type="number" data-flash-for="running" min="0" max="10" step="0.1" value="1.2"> 秒</label>
+        </div>
+        <div class="state-bottom">
+          <span class="swatch" data-swatch="running"></span>
+          <input type="color" data-state="running" data-index="0" value="#10b981">
+          <input type="color" data-state="running" data-index="1" value="#34d399">
+          <input type="color" data-state="running" data-index="2" value="#6ee7b7">
+        </div>
+      </div>
+      <div class="state-item">
+        <div class="state-top">
+          <span class="name">已完成</span>
+          <label class="flash">闪动 <input type="number" data-flash-for="success" min="0" max="10" step="0.1" value="0"> 秒</label>
+        </div>
+        <div class="state-bottom">
+          <span class="swatch" data-swatch="success"></span>
+          <input type="color" data-state="success" data-index="0" value="#ec4899">
+          <input type="color" data-state="success" data-index="1" value="#f472b6">
+          <input type="color" data-state="success" data-index="2" value="#f9a8d4">
+        </div>
+      </div>
+      <div class="state-item">
+        <div class="state-top">
+          <span class="name">待审批</span>
+          <label class="flash">闪动 <input type="number" data-flash-for="warning" min="0" max="10" step="0.1" value="1.1"> 秒</label>
+        </div>
+        <div class="state-bottom">
+          <span class="swatch" data-swatch="warning"></span>
+          <input type="color" data-state="warning" data-index="0" value="#f59e0b">
+          <input type="color" data-state="warning" data-index="1" value="#fbbf24">
+          <input type="color" data-state="warning" data-index="2" value="#fde68a">
+        </div>
+      </div>
+      <div class="state-item">
+        <div class="state-top">
+          <span class="name">计划待审</span>
+          <label class="flash">闪动 <input type="number" data-flash-for="planReview" min="0" max="10" step="0.1" value="2"> 秒</label>
+        </div>
+        <div class="state-bottom">
+          <span class="swatch" data-swatch="planReview"></span>
+          <input type="color" data-state="planReview" data-index="0" value="#06b6d4">
+          <input type="color" data-state="planReview" data-index="1" value="#22d3ee">
+          <input type="color" data-state="planReview" data-index="2" value="#67e8f9">
+        </div>
+      </div>
+      <div class="state-item">
+        <div class="state-top">
+          <span class="name">待回答</span>
+          <label class="flash">闪动 <input type="number" data-flash-for="question" min="0" max="10" step="0.1" value="1.6"> 秒</label>
+        </div>
+        <div class="state-bottom">
+          <span class="swatch" data-swatch="question"></span>
+          <input type="color" data-state="question" data-index="0" value="#a855f7">
+          <input type="color" data-state="question" data-index="1" value="#c084fc">
+          <input type="color" data-state="question" data-index="2" value="#d8b4fe">
+        </div>
+      </div>
     </div>
   </div>
-  <div class="field">
-    <label>光圈宽度 <span id="vWidth"></span>px</label>
-    <input type="range" id="width" min="1" max="40" step="1" value="8">
-  </div>
-  <div class="field">
-    <label>不透明度 <span id="vOpacity"></span>%</label>
-    <input type="range" id="opacity" min="5" max="100" step="5" value="60">
-  </div>
-  <div class="field">
-    <label>效果样式</label>
-    <select id="style">
-      <option value="glow" selected>柔光晕（散光，默认）</option>
-      <option value="segments">分段跑马灯（经典）</option>
-      <option value="smooth">平滑跑马灯（柔和）</option>
-      <option value="linear">线性渐变（静止）</option>
-    </select>
-  </div>
-  <div class="field" id="fieldRotate">
-    <label>转速 <span id="vRotate"></span> 秒/圈</label>
-    <input type="range" id="rotate" min="0" max="60" step="1" value="16">
-  </div>
-  <div class="field" id="fieldGlowSpread" style="display:none">
-    <label>扩散范围 <span id="vGlowSpread"></span> px</label>
-    <input type="range" id="glowSpread" min="0" max="200" step="1" value="24">
-  </div>
-  <div class="field" id="fieldGlowWobble" style="display:none">
-    <label>不规则强度 <span id="vGlowWobble"></span></label>
-    <input type="range" id="glowWobble" min="0" max="10" step="0.1" value="1">
-  </div>
-  <div class="field">
-    <label>闪动 <span id="vFlash"></span> 秒/周期</label>
-    <input type="range" id="flash" min="0" max="10" step="0.2" value="1.2">
-  </div>
-  <div class="states">
-    <div class="state-row"><span class="name">运行中</span><span class="swatch" id="swRunning"></span>
-      <input type="color" data-state="running" data-index="0" value="#10b981">
-      <input type="color" data-state="running" data-index="1" value="#34d399">
-      <input type="color" data-state="running" data-index="2" value="#6ee7b7">
-    </div>
-    <div class="state-row"><span class="name">完成</span><span class="swatch" id="swSuccess"></span>
-      <input type="color" data-state="success" data-index="0" value="#ec4899">
-      <input type="color" data-state="success" data-index="1" value="#f472b6">
-      <input type="color" data-state="success" data-index="2" value="#f9a8d4">
-    </div>
-    <div class="state-row"><span class="name">待处理</span><span class="swatch" id="swWarning"></span>
-      <input type="color" data-state="warning" data-index="0" value="#f59e0b">
-      <input type="color" data-state="warning" data-index="1" value="#fbbf24">
-      <input type="color" data-state="warning" data-index="2" value="#fde68a">
-    </div>
+
+  <div class="btn-row">
+    <button id="reset" type="button">重置参数</button>
   </div>
 </aside>
 
-<div class="stage">
-  <h1>dsh-mood-light · 氛围灯</h1>
-  <p>
-    在 DSH Web 界面边缘渲染一圈柔和散射光，随会话状态自动变色
-    （运行中绿色呼吸 / 完成粉色 / 有待处理黄色警告）。默认柔光晕（散光）
-    ——无边框、由边缘平滑向内淡出的散射光；跑马灯（旋转光带）与线性渐变仍可选。
-    本页为独立预览：无需安装插件，右侧面板即可调参。<br>
-    安装：<code>dsh plugin --profile web add "github:lihang-lh/dsh-moon-light"</code>
-  </p>
-</div>
-
 <script>
 (function () {
-  var MODES = ['running', 'success', 'warning'];
-  var colors = {
-    running: ['#10b981', '#34d399', '#6ee7b7'],
-    success: ['#ec4899', '#f472b6', '#f9a8d4'],
-    warning: ['#f59e0b', '#fbbf24', '#fde68a']
+  'use strict';
+
+  /* ============ 状态枚举与默认配置（对齐 proposal 的 DEFAULT_CONFIG） ============ */
+  var MODES = ['running', 'success', 'warning', 'planReview', 'question'];
+  var STATUS_TEXT = {
+    running: '正在运行',
+    success: '已完成',
+    warning: '待审批',
+    planReview: '计划待审',
+    question: '待回答'
   };
-  var mode = 'running';
-  var state = {
+
+  var DEFAULTS = {
     width: 8,
     opacity: 0.6,
     style: 'glow',
     rotate: 16,
-    flash: 1.2,
     glowSpread: 24,
-    glowWobble: 1
+    glowWobble: 0,               // 原 1：默认不再对全屏施加 SVG 滤镜
+    transitionMs: 700,
+    grain: 0.035,
+    fill: true,
+    fillStrength: 1,
+    sweep: true,
+    capsule: true,
+    capsuleTriggerHeight: 10,
+    statusBar: true,
+    title: '修复登录问题',
+    others: 2,
+    pending: 1,
+    states: {
+      running:    { colors: ['#10b981', '#34d399', '#6ee7b7'], flash: 1.2 },
+      success:    { colors: ['#ec4899', '#f472b6', '#f9a8d4'], flash: 0 },
+      warning:    { colors: ['#f59e0b', '#fbbf24', '#fde68a'], flash: 1.1 },
+      planReview: { colors: ['#06b6d4', '#22d3ee', '#67e8f9'], flash: 2.0 },
+      question:   { colors: ['#a855f7', '#c084fc', '#d8b4fe'], flash: 1.6 }
+    }
   };
 
-  var ring = document.getElementById('ring');
-  var swatches = {
-    running: document.getElementById('swRunning'),
-    success: document.getElementById('swSuccess'),
-    warning: document.getElementById('swWarning')
-  };
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  var S = clone(DEFAULTS);
 
+  var enabled = true;
+  var mode = 'running';
+  var hovered = false;
+  var displayedMode = null;      // 入层当前展示的模式（用于 crossfade 快照）
+  var outLayer = null;
+  var outTimer = null;
+  var hideTimer = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var ring = $('ring');
+  var layerIn = $('layerIn');
+  var grainEl = $('grain');
+  var sweepEl = $('sweep');
+  var discEl = $('disc');
+  var hitEl = $('hit');
+  var capsuleEl = $('capsule');
+  var capsuleStatic = $('capsuleStatic');
+  var barDock = $('barDock');
+  var barDot = $('barDot');
+  var barStatus = $('barStatus');
+  var barSum = $('barSum');
+  var turbMap = document.querySelector('#turbWrap feDisplacementMap');
+
+  /* ============ 与插件一致的算法（一字未改） ============ */
   function conicGradient(colorsArr, segments) {
     if (segments) {
       var n = colorsArr.length, slice = 360 / n, stops = [];
@@ -267,87 +816,361 @@
     return parts.join(', ');
   }
 
-  var turbMap = document.querySelector('#turbWrap feDisplacementMap');
+  function gradientType() {
+    if (S.style === 'linear') return 'linear';
+    if (S.style === 'segments' || S.style === 'smooth') return 'conic';
+    return 'glow';
+  }
 
-  function showField(el, show) { el.style.display = show ? '' : 'none'; }
-
-  function render() {
-    if (mode === 'off') { ring.style.display = 'none'; return; }
-    ring.style.display = '';
-    var glow = state.style === 'glow';
-    var conic = !glow && state.style !== 'linear';
-    ring.className = glow ? 'dsh-mood-light dsh-mood-light-glow' : 'dsh-mood-light';
-
+  /* ============ 图层：一个「模式快照」（fill + glow） ============ */
+  function applyLayer(el, m) {
+    var st = S.states[m];
+    el.style.setProperty('--ml-fill-a', hexToRgba(st.colors[0], 0.55));
+    el.style.setProperty('--ml-fill-b', hexToRgba(st.colors[1] || st.colors[0], 0.4));
+    el.style.setProperty('--ml-glow-shadow', glowShadowString(st.colors, S.width, S.glowSpread));
+    el.style.setProperty('--ml-flash', (st.flash > 0 ? st.flash : 0) + 's');
+    var fill = el.querySelector('.dsh-mood-light-fill');
+    var glow = el.querySelector('.dsh-mood-light-glow');
+    if (fill) fill.hidden = S.fill !== true;
     if (glow) {
-      ring.style.setProperty('--ml-glow-shadow', glowShadowString(colors[mode], state.width, state.glowSpread));
-      ring.style.setProperty('--ml-width', state.width + 'px');
-      ring.style.setProperty('--ml-opacity', String(state.opacity));
-      ring.style.setProperty('--ml-flash', (state.flash > 0 ? state.flash : 0) + 's');
-      ring.dataset.flash = state.flash > 0 ? 'on' : 'off';
-      if (turbMap) turbMap.setAttribute('scale', state.glowWobble);
-      if (state.glowWobble > 0) ring.style.filter = 'url(#dsh-mood-light-turb)';
-      else ring.style.removeProperty('filter');
-      ring.innerHTML = '';
-    } else {
-      var gradient = state.style === 'linear'
-        ? 'linear-gradient(135deg, ' + colors[mode].join(', ') + ')'
-        : conicGradient(colors[mode], state.style === 'segments');
-      ring.style.setProperty('--ml-gradient', gradient);
-      ring.style.setProperty('--ml-width', state.width + 'px');
-      ring.style.setProperty('--ml-opacity', String(state.opacity));
-      ring.style.setProperty('--ml-flash', (state.flash > 0 ? state.flash : 0) + 's');
-      ring.style.setProperty('--ml-rotate', (conic && state.rotate > 0 ? state.rotate : 0) + 's');
-      ring.dataset.flash = state.flash > 0 ? 'on' : 'off';
-      ring.style.removeProperty('filter');
-      ring.innerHTML = conic && state.rotate > 0
-        ? '<div class="dsh-mood-light-disc"></div>'
-        : '';
-    }
-
-    showField(document.getElementById('fieldRotate'), !glow);
-    showField(document.getElementById('fieldGlowSpread'), glow);
-    showField(document.getElementById('fieldGlowWobble'), glow);
-
-    document.getElementById('vWidth').textContent = state.width;
-    document.getElementById('vOpacity').textContent = Math.round(state.opacity * 100);
-    document.getElementById('vRotate').textContent = state.rotate;
-    document.getElementById('vFlash').textContent = state.flash.toFixed(1);
-    document.getElementById('vGlowSpread').textContent = state.glowSpread;
-    document.getElementById('vGlowWobble').textContent = state.glowWobble > 0 ? state.glowWobble.toFixed(1) : '关闭';
-    for (var i = 0; i < MODES.length; i++) {
-      swatches[MODES[i]].style.background = 'linear-gradient(90deg, ' + colors[MODES[i]].join(', ') + ')';
+      if (S.glowWobble > 0) glow.style.filter = 'url(#dsh-mood-light-turb)';
+      else glow.style.removeProperty('filter');
     }
   }
 
-  // 状态按钮
-  var btns = document.querySelectorAll('.mode-btns button');
-  btns.forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      mode = btn.dataset.mode;
-      btns.forEach(function (b) { b.classList.toggle('active', b === btn); });
+  function makeLayer(m) {
+    var el = document.createElement('div');
+    el.className = 'dsh-mood-light-layer';
+    var fill = document.createElement('div');
+    fill.className = 'dsh-mood-light-fill';
+    var glow = document.createElement('div');
+    glow.className = 'dsh-mood-light-glow';
+    el.appendChild(fill);
+    el.appendChild(glow);
+    applyLayer(el, m);
+    return el;
+  }
+
+  function clearOut() {
+    if (outTimer !== null) { clearTimeout(outTimer); outTimer = null; }
+    if (outLayer !== null && outLayer.parentNode) outLayer.parentNode.removeChild(outLayer);
+    outLayer = null;
+  }
+
+  // 双层 crossfade：出层用上一模式的阴影串并淡出，入层淡入。不直接过渡 box-shadow。
+  function startCrossfade(prevMode, nextMode) {
+    clearOut();
+    var out = makeLayer(prevMode);
+    out.style.transition = 'none';
+    out.style.opacity = '1';
+    ring.insertBefore(out, layerIn);
+    outLayer = out;
+
+    layerIn.style.transition = 'none';
+    layerIn.style.opacity = '0';
+    applyLayer(layerIn, nextMode);
+    void ring.offsetHeight;                       // 强制一次样式结算，锁定过渡起点
+
+    var dur = S.transitionMs;
+    out.style.transition = 'opacity ' + dur + 'ms ease';
+    out.style.opacity = '0';
+    layerIn.style.transition = 'opacity ' + dur + 'ms ease';
+    layerIn.style.opacity = '1';
+    outTimer = setTimeout(clearOut, dur + 60);
+  }
+
+  /* ============ 渲染 ============ */
+  function render(opts) {
+    opts = opts || {};
+    var gt = gradientType();
+    var isGlow = gt === 'glow';
+
+    ring.className = 'dsh-mood-light is-' + gt;
+    ring.hidden = enabled !== true;
+    ring.dataset.mode = mode;
+    ring.dataset.flash = (S.states[mode].flash > 0) ? 'on' : 'off';
+    ring.style.setProperty('--ml-width', S.width + 'px');
+    ring.style.setProperty('--ml-opacity', String(S.opacity));
+    ring.style.setProperty('--ml-transition', S.transitionMs + 'ms');
+    ring.style.setProperty('--ml-fill-strength', String(S.fillStrength));
+    ring.style.setProperty('--ml-grain', String(S.grain));
+    ring.style.setProperty('--ml-rotate', (gt === 'conic' && S.rotate > 0 ? S.rotate : 0) + 's');
+    ring.style.setProperty('--ml-gradient', gt === 'linear'
+      ? 'linear-gradient(135deg, ' + S.states[mode].colors.join(', ') + ')'
+      : conicGradient(S.states[mode].colors, S.style === 'segments'));
+    if (turbMap) turbMap.setAttribute('scale', String(S.glowWobble));
+
+    document.getElementById('fieldRotate').classList.toggle('is-hidden', gt !== 'conic');
+    document.getElementById('fieldGlowSpread').classList.toggle('is-hidden', !isGlow);
+    document.getElementById('fieldGlowWobble').classList.toggle('is-hidden', !isGlow);
+    document.getElementById('wobbleHint').classList.toggle('is-hidden', !(isGlow && S.glowWobble > 0));
+    document.getElementById('motionGroup').classList.toggle('is-hidden', !isGlow);
+
+    if (enabled !== true) {
+      clearOut();
+      displayedMode = null;
+      updateChrome();
+      return;
+    }
+
+    grainEl.hidden = !(isGlow && S.grain > 0);
+    sweepEl.hidden = !(isGlow && S.sweep === true);
+    discEl.hidden = !(!isGlow && gt === 'conic' && S.rotate > 0);
+    layerIn.hidden = !isGlow;
+    sweepEl.style.setProperty('--ml-sweep-color', S.states[mode].colors[0]);
+
+    if (isGlow) {
+      var prev = (opts.instant === true) ? null : displayedMode;
+      if (prev !== null && prev !== mode && S.transitionMs > 0) {
+        startCrossfade(prev, mode);
+      } else {
+        clearOut();
+        layerIn.style.transition = 'none';
+        layerIn.style.opacity = '1';
+        applyLayer(layerIn, mode);
+        void layerIn.offsetHeight;
+        layerIn.style.transition = '';
+      }
+      displayedMode = mode;
+    } else {
+      clearOut();
+      displayedMode = null;
+    }
+
+    updateChrome();
+  }
+
+  /* ============ 交互层与文字汇总 ============ */
+  function summaryText() {
+    var others = Math.max(0, Math.round(+S.others || 0));
+    if (others <= 0) return '';
+    var p = Math.min(others, Math.max(0, Math.round(+S.pending || 0)));
+    var s = '另有 ' + others + ' 个会话';
+    if (p > 0) s += '（' + p + ' 待处理）';
+    return s;
+  }
+
+  function fillChrome(scope, subText) {
+    var dot = scope.querySelector('.ml-dot');
+    var title = scope.querySelector('.ml-capsule-title');
+    var sub = scope.querySelector('.ml-capsule-sub');
+    if (dot) { dot.style.background = S.states[mode].colors[0]; dot.style.color = S.states[mode].colors[0]; }
+    if (title) title.textContent = S.title;
+    if (sub) sub.textContent = subText;
+  }
+
+  function updateChrome() {
+    var on = enabled === true;
+    var sum = summaryText();
+    var subText = STATUS_TEXT[mode] + (sum ? ' · ' + sum : '');
+    var showCapsule = on && S.capsule === true;
+
+    hitEl.classList.toggle('is-off', !showCapsule);
+    hitEl.style.setProperty('--ml-hit-height', S.capsuleTriggerHeight + 'px');
+    capsuleEl.classList.toggle('is-off', !showCapsule);
+    capsuleEl.classList.toggle('is-open', showCapsule && (hovered || S.pinned === true));
+    capsuleEl.title = '点击跳转到最需要注意的会话：' + S.title;
+    fillChrome(capsuleEl, subText);
+    fillChrome(capsuleStatic, subText);
+
+    barDock.hidden = !(on && S.statusBar === true);
+    barDot.style.background = S.states[mode].colors[0];
+    barStatus.textContent = STATUS_TEXT[mode];
+    barSum.textContent = sum;
+  }
+
+  /* ============ 扫光 ============ */
+  function playSweep() {
+    if (sweepEl.hidden) return;
+    sweepEl.classList.remove('is-active');
+    void sweepEl.offsetWidth;
+    sweepEl.classList.add('is-active');
+  }
+  sweepEl.addEventListener('animationend', function () {
+    sweepEl.classList.remove('is-active');
+  });
+
+  /* ============ 顶部触发带 ============ */
+  function openCapsule() {
+    if (hideTimer !== null) { clearTimeout(hideTimer); hideTimer = null; }
+    hovered = true;
+    updateChrome();
+  }
+  function closeCapsule() {
+    if (hideTimer !== null) clearTimeout(hideTimer);
+    hideTimer = setTimeout(function () {
+      hideTimer = null;
+      hovered = false;
+      updateChrome();
+    }, 220);
+  }
+  hitEl.addEventListener('mouseenter', openCapsule);
+  hitEl.addEventListener('mouseleave', closeCapsule);
+  capsuleEl.addEventListener('mouseenter', openCapsule);
+  capsuleEl.addEventListener('mouseleave', closeCapsule);
+  capsuleEl.addEventListener('click', function () {
+    var note = document.querySelector('.demo-note');
+    if (!note) return;
+    note.dataset.original = note.dataset.original || note.innerHTML;
+    note.innerHTML = '（预览页无宿主会话可跳转；真实插件会调用 uiWorkspace.openSession 切到该会话）';
+    setTimeout(function () { note.innerHTML = note.dataset.original; }, 1600);
+  });
+  capsuleStatic.addEventListener('click', function () {
+    capsuleEl.click();
+  });
+
+  /* ============ 控件绑定 ============ */
+  function setRange(id, key, transform, labelId, format) {
+    var el = $(id);
+    el.addEventListener('input', function () {
+      var v = +el.value;
+      S[key] = transform ? transform(v) : v;
+      if (labelId) $(labelId).textContent = format ? format(v) : v;
       render();
     });
+  }
+  function setCheck(id, key) {
+    var el = $(id);
+    el.addEventListener('change', function () { S[key] = el.checked; render(); });
+  }
+
+  setRange('width', 'width', null, 'vWidth');
+  setRange('opacity', 'opacity', function (v) { return v / 100; }, 'vOpacity');
+  setRange('rotate', 'rotate', null, 'vRotate');
+  setRange('glowSpread', 'glowSpread', null, 'vGlowSpread');
+  setRange('glowWobble', 'glowWobble', null, 'vGlowWobble', function (v) { return v > 0 ? v.toFixed(1) : '关闭'; });
+  setRange('transition', 'transitionMs', null, 'vTransition');
+  setRange('fillStrength', 'fillStrength', function (v) { return v / 100; }, 'vFillStrength');
+  setRange('grain', 'grain', null, 'vGrain', function (v) { return (+v).toFixed(3); });
+  setRange('hitHeight', 'capsuleTriggerHeight', null, 'vHitHeight');
+
+  setCheck('fillOn', 'fill');
+  setCheck('sweepOn', 'sweep');
+  setCheck('capsuleOn', 'capsule');
+  setCheck('statusBarOn', 'statusBar');
+  setCheck('pinned', 'pinned');
+
+  $('title').addEventListener('input', function (e) { S.title = e.target.value; updateChrome(); });
+  $('others').addEventListener('input', function (e) { S.others = +e.target.value; updateChrome(); });
+  $('pending').addEventListener('input', function (e) { S.pending = +e.target.value; updateChrome(); });
+
+  $('style').addEventListener('change', function (e) {
+    S.style = e.target.value;
+    render({ instant: true });
   });
-  btns[0].classList.add('active');
 
-  // 滑块
-  document.getElementById('width').addEventListener('input', function (e) { state.width = +e.target.value; render(); });
-  document.getElementById('opacity').addEventListener('input', function (e) { state.opacity = +e.target.value / 100; render(); });
-  document.getElementById('rotate').addEventListener('input', function (e) { state.rotate = +e.target.value; render(); });
-  document.getElementById('flash').addEventListener('input', function (e) { state.flash = +e.target.value; render(); });
-  document.getElementById('glowSpread').addEventListener('input', function (e) { state.glowSpread = +e.target.value; render(); });
-  document.getElementById('glowWobble').addEventListener('input', function (e) { state.glowWobble = +e.target.value; render(); });
-  document.getElementById('style').addEventListener('change', function (e) { state.style = e.target.value; render(); });
-
-  // 取色器
-  document.querySelectorAll('input[type="color"]').forEach(function (input) {
+  document.querySelectorAll('input[type="color"][data-state]').forEach(function (input) {
     input.addEventListener('input', function () {
-      colors[input.dataset.state][+input.dataset.index] = input.value;
+      S.states[input.dataset.state].colors[+input.dataset.index] = input.value;
+      render();
+      paintSwatches();
+    });
+  });
+  document.querySelectorAll('input[data-flash-for]').forEach(function (input) {
+    input.addEventListener('input', function () {
+      S.states[input.dataset.flashFor].flash = +input.value || 0;
       render();
     });
   });
 
-  render();
+  function paintSwatches() {
+    MODES.forEach(function (m) {
+      var sw = document.querySelector('[data-swatch="' + m + '"]');
+      if (sw) sw.style.background = 'linear-gradient(90deg, ' + S.states[m].colors.join(', ') + ')';
+    });
+  }
+
+  /* ============ 状态按钮 / 开关 ============ */
+  var modeBtns = document.querySelectorAll('.mode-btns button');
+  function syncModeButtons() {
+    var active = enabled === true ? mode : 'off';
+    modeBtns.forEach(function (b) { b.classList.toggle('active', b.dataset.mode === active); });
+  }
+  modeBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var next = btn.dataset.mode;
+      if (next === 'off') {
+        enabled = false;
+        render();
+        syncModeButtons();
+        return;
+      }
+      var prev = mode;
+      var wasEnabled = enabled;
+      enabled = true;
+      mode = next;
+      render();
+      syncModeButtons();
+      if (wasEnabled && prev === 'running' && next === 'success' && S.sweep === true && gradientType() === 'glow') {
+        playSweep();
+      }
+    });
+  });
+
+  $('playSweep').addEventListener('click', playSweep);
+  $('barToggle').addEventListener('click', function () {
+    enabled = !enabled;
+    render();
+    syncModeButtons();
+  });
+
+  $('themeBtn').addEventListener('click', function () {
+    var dark = document.body.hasAttribute('data-ds-dark-theme');
+    if (dark) document.body.removeAttribute('data-ds-dark-theme');
+    else document.body.setAttribute('data-ds-dark-theme', '');
+    $('themeBtn').textContent = dark ? '切换到深色' : '切换到浅色';
+  });
+
+  $('reset').addEventListener('click', function () {
+    S = clone(DEFAULTS);
+    if (!document.body.hasAttribute('data-ds-dark-theme')) document.body.setAttribute('data-ds-dark-theme', '');
+    $('themeBtn').textContent = '切换到浅色';
+    $('width').value = S.width;
+    $('vWidth').textContent = S.width;
+    $('opacity').value = Math.round(S.opacity * 100);
+    $('vOpacity').textContent = Math.round(S.opacity * 100);
+    $('style').value = S.style;
+    $('rotate').value = S.rotate;
+    $('vRotate').textContent = S.rotate;
+    $('glowSpread').value = S.glowSpread;
+    $('vGlowSpread').textContent = S.glowSpread;
+    $('glowWobble').value = S.glowWobble;
+    $('vGlowWobble').textContent = '关闭';
+    $('transition').value = S.transitionMs;
+    $('vTransition').textContent = S.transitionMs;
+    $('fillStrength').value = S.fillStrength * 100;
+    $('vFillStrength').textContent = S.fillStrength * 100;
+    $('grain').value = S.grain;
+    $('vGrain').textContent = S.grain.toFixed(3);
+    $('hitHeight').value = S.capsuleTriggerHeight;
+    $('vHitHeight').textContent = S.capsuleTriggerHeight;
+    $('fillOn').checked = S.fill;
+    $('sweepOn').checked = S.sweep;
+    $('capsuleOn').checked = S.capsule;
+    $('statusBarOn').checked = S.statusBar;
+    $('pinned').checked = false;
+    $('title').value = S.title;
+    $('others').value = S.others;
+    $('pending').value = S.pending;
+    MODES.forEach(function (m) {
+      var inputs = document.querySelectorAll('input[type="color"][data-state="' + m + '"]');
+      inputs.forEach(function (input, i) { input.value = S.states[m].colors[i]; });
+      var f = document.querySelector('input[data-flash-for="' + m + '"]');
+      if (f) f.value = S.states[m].flash;
+    });
+    enabled = true;
+    mode = 'running';
+    displayedMode = null;
+    paintSwatches();
+    render({ instant: true });
+    syncModeButtons();
+  });
+
+  /* ============ 初始化 ============ */
+  if (turbMap) turbMap.setAttribute('scale', String(S.glowWobble));
+  paintSwatches();
+  syncModeButtons();
+  render({ instant: true });
 })();
 </script>
 </body>
