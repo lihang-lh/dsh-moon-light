@@ -4,10 +4,15 @@
 # localStorage 并优先于本文件生效。也可以在用户 profile 的 cordis.patch.yml
 # 里对同一行 id 覆盖（优先级：localStorage > 本文件 > 内置默认）。
 #
-# 状态映射（自动切换，无需配置）：
-#   running（运行中）     -> 绿色柔光晕（内散射）+ 呼吸闪动
-#   success（完成/空闲）  -> 粉色柔光晕（稳态）
-#   warning（有待处理）   -> 黄色柔光晕（慢速脉冲）
+# 状态映射（自动切换，无需配置；多会话时取最高优先级）：
+#   warning（待审批）    -> 琥珀色柔光晕（慢速脉冲，优先级最高）
+#   question（待回答）   -> 紫色柔光晕
+#   planReview（计划待审）-> 青蓝色柔光晕
+#   running（运行中）    -> 绿色柔光晕（内散射）+ 呼吸闪动
+#   success（完成/空闲） -> 粉色柔光晕（稳态）+ 一次边缘扫光
+#
+# 注意：待处理状态来自宿主的 useSessionStatus（pendingInteraction.kind），
+# 不是会话摘要里的字段；未知 kind 一律兜底为 warning（待审批）。
 - insert:
     - id: mood-light
       name: 'dsh-mood-light'
@@ -15,15 +20,27 @@
         enabled: true
         # 光圈厚度（px）
         width: 8
-        # 最大不透明度 0..1
+        # 最大不透明度 0..1（深色/浅色主题会再乘一个自适应系数）
         opacity: 0.6
         # 渐变类型：'glow' 柔光晕（散光，默认、无边框内散射）| 'conic' 跑马灯旋转光带 | 'linear' 线性渐变（静止）
-        # glow 专用参数（仅 gradientType='glow' 时生效）：glowSpread 扩散范围 0..200，glowWobble 不规则强度 0..10
         gradientType: 'glow'
-        # 柔光晕散射范围（0..200，仅 glow）
+        # glow 专用参数（仅 gradientType='glow' 时生效）
+        # 柔光晕散射范围（0..200）
         glowSpread: 24
-        # 柔光晕不规则强度（0..10，仅 glow；0 = 不应用位移滤镜）
-        glowWobble: 1
+        # 柔光晕不规则强度（0..10；默认 0 = 不应用位移滤镜，避免全屏 SVG 滤镜开销）
+        glowWobble: 0
+        # 状态切换时新旧颜色的交叉淡出时长（ms，仅 glow）
+        transitionMs: 700
+        # 完成时沿边缘扫过一道亮带（仅 glow）
+        sweep: true
+        # 噪点质感强度（0..0.3，仅 glow；0 = 不渲染噪点层）
+        grain: 0.035
+        # 顶部悬停触发的聚合胶囊（仅 glow）
+        capsule: true
+        # 顶部触发带高度（px，仅 glow）
+        capsuleTriggerHeight: 10
+        # 输入框下方常驻状态条
+        statusBar: true
         # 光带样式（仅 conic）：true 分段跑马灯（经典） | false 平滑渐变（柔和）
         segments: true
         # 跑马灯旋转一圈的秒数（0 = 静止）
@@ -35,11 +52,19 @@
           running:
             colors: ['#10b981', '#34d399', '#6ee7b7']
             flash: 1.2
-          # 完成 / 空闲：粉色稳态（flash: 0 = 不闪）
+          # 完成 / 空闲：粉色稳态（flash: 0 = 不闪），切换过来时播一次扫光
           success:
             colors: ['#ec4899', '#f472b6', '#f9a8d4']
             flash: 0
-          # 有待处理（审批 / 计划确认 / 提问）：黄色慢速脉冲
+          # 待审批（pendingInteraction.kind = 'approval'，也是未知 kind 的兜底）：琥珀色慢速脉冲
           warning:
             colors: ['#f59e0b', '#fbbf24', '#fde68a']
+            flash: 1.1
+          # 计划待审（kind = 'plan-review'）：青蓝色，闪得稍快以突出「等你拍板」
+          planReview:
+            colors: ['#06b6d4', '#22d3ee', '#67e8f9']
+            flash: 2.0
+          # 待回答（kind = 'question'）：紫色
+          question:
+            colors: ['#a855f7', '#c084fc', '#d8b4fe']
             flash: 1.6
